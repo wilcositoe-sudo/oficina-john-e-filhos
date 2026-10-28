@@ -1,0 +1,19 @@
+{
+  "name": "oficina-john-filhos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sistema de Gestão de Ordens de Serviço — Oficina Mecânica John e Filhos",
+  "workspaces": [
+    "apps/*",
+    "api"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
