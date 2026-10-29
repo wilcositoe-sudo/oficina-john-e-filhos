@@ -21,3 +21,12 @@ export function createRequireAuth({ sessaoRepo, utilizadorRepo }) {
     }
   };
 }
+// RBAC (Doc 04 §4.3): negação por omissão — só passa se o perfil estiver na lista.
+export function createRequireRole(...perfisPermitidos) {
+  return (req, res, next) => {
+    if (!req.utilizador || !perfisPermitidos.includes(req.utilizador.perfil)) {
+      return next(erros.naoAutorizado());
+    }
+    next();
+  };
+}

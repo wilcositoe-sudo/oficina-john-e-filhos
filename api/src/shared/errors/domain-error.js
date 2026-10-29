@@ -20,4 +20,8 @@ export const erros = {
     new DomainError('TELEFONE_EM_USO', 'Já existe uma conta com este telefone.', 409),
   utilizadorNaoEncontrado: () =>
     new DomainError('UTILIZADOR_NAO_ENCONTRADO', 'Utilizador não encontrado.', 404),
+    naoAutorizado: () =>
+    new DomainError('NAO_AUTORIZADO', 'Sem permissão para esta operação.', 403),
+  servicoNaoEncontrado: () =>
+    new DomainError('SERVICO_NAO_ENCONTRADO', 'Serviço não encontrado.', 404),
 };
