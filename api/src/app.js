@@ -2,6 +2,7 @@ import express from 'express';
 import { createAuthRouter } from './modules/auth/http/auth-routes.js';
 import { logger } from './shared/logging/logger.js';
 import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
+import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
 
 export function createApp() {
   const app = express();
@@ -16,6 +17,7 @@ export function createApp() {
   // API versionada (Doc 10 §10.1)
   app.use('/api/v1/auth', createAuthRouter());
   app.use('/api/v1', createCatalogRouter());
+  app.use('/api/v1', createVehicleRouter());
   app.use((req, res) => {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.' },

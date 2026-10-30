@@ -24,4 +24,8 @@ export const erros = {
     new DomainError('NAO_AUTORIZADO', 'Sem permissão para esta operação.', 403),
   servicoNaoEncontrado: () =>
     new DomainError('SERVICO_NAO_ENCONTRADO', 'Serviço não encontrado.', 404),
+    matriculaEmUso: () =>
+    new DomainError('MATRICULA_EM_USO', 'Já existe um veículo com esta matrícula.', 409),
+  veiculoNaoEncontrado: () =>
+    new DomainError('VEICULO_NAO_ENCONTRADO', 'Veículo não encontrado.', 404),
 };
