@@ -11,4 +11,7 @@ export const ServicoRepository = {
   async desativar(id) {
     throw new Error('Porta não implementada: desativar');
   },
+    async listarTodos() {
+    throw new Error('Porta não implementada: listarTodos');
+  },
 };

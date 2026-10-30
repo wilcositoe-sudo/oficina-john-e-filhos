@@ -7,6 +7,7 @@ import { createRequireAuth, createRequireRole } from '../../auth/http/session-mi
 import { criarListarServicosPublico } from '../use-cases/listar-servicos-publico.js';
 import { criarCriarServico } from '../use-cases/criar-servico.js';
 import { criarDesativarServico } from '../use-cases/desativar-servico.js';
+import { criarListarTodosServicos } from '../use-cases/listar-todos-servicos.js';
 
 export function createCatalogRouter() {
   const router = Router();
@@ -19,9 +20,14 @@ export function createCatalogRouter() {
   const listar = criarListarServicosPublico({ servicoRepo });
   const criar = criarCriarServico({ servicoRepo });
   const desativar = criarDesativarServico({ servicoRepo });
+  const listarTodos = criarListarTodosServicos({ servicoRepo });
 
   router.get('/servicos', asyncRoute(async (req, res) => {
     res.json({ data: await listar() });
+  }));
+
+    router.get('/servicos/todos', ...staff, asyncRoute(async (req, res) => {
+    res.json({ data: await listarTodos() });
   }));
 
   // Gestão: só staff (RF01/RF18 — decisão de permissão a validar com a oficina)

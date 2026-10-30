@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-   "scripts": {
+  "scripts": {
     "dev": "node --watch --env-file=../.env src/server.js",
     "start": "node --env-file=../.env src/server.js",
     "db:check": "node --env-file=../.env scripts/check-db.js",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "express": "^5.2.0",
     "pg": "^8.23.1"
   }

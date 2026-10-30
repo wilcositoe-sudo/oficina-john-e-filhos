@@ -45,5 +45,11 @@ export function criarPgServicoRepository() {
       );
       return rows[0] ? map(rows[0]) : null;
     },
+        async listarTodos() {
+      const { rows } = await pool.query(
+        `SELECT id, codigo, nome, descricao, preco_base, ativo FROM servicos ORDER BY nome`,
+      );
+      return rows.map(map);
+    },
   };
 }

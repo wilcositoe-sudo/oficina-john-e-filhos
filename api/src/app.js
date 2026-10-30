@@ -3,12 +3,16 @@ import { createAuthRouter } from './modules/auth/http/auth-routes.js';
 import { logger } from './shared/logging/logger.js';
 import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
 import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
+import cors from 'cors';
+import { config } from './config.js';
+
 
 export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
+  app.use(cors({ origin: config.webOrigin }));
 
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
