@@ -6,6 +6,7 @@ import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
 import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
 import { createQuotesRouter } from './modules/quotes/http/quotes-routes.js';
 import { createAppointmentsRouter } from './modules/appointments/http/appointments-routes.js';
+import { createWorkOrdersRouter } from './modules/work-orders/http/work-orders-routes.js';
 import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
@@ -27,6 +28,7 @@ export function createApp() {
   app.use('/api/v1', createVehicleRouter());
   app.use('/api/v1', createQuotesRouter());
   app.use('/api/v1', createAppointmentsRouter());
+  app.use('/api/v1', createWorkOrdersRouter());
 
   app.use((req, res) => {
     res.status(404).json({

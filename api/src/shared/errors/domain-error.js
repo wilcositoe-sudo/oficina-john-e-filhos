@@ -27,6 +27,8 @@ export const erros = {
     new DomainError('TELEFONE_EM_USO', 'Já existe uma conta com este telefone.', 409),
   utilizadorNaoEncontrado: () =>
     new DomainError('UTILIZADOR_NAO_ENCONTRADO', 'Utilizador não encontrado.', 404),
+  clienteNaoEncontrado: () =>
+    new DomainError('CLIENTE_NAO_ENCONTRADO', 'Cliente não encontrado.', 404),
 
   // --- Catálogo (RF01) ---
   servicoNaoEncontrado: () =>
@@ -51,4 +53,8 @@ export const erros = {
     new DomainError('SLOT_INDISPONIVEL', 'Este horário acabou de ser ocupado. Escolha outro.', 409),
   horarioInvalido: (msg = 'Horário inválido.') =>
     new DomainError('HORARIO_INVALIDO', msg, 422),
+
+  // --- Ordens de serviço (RF11/RF12, RN03, RN07) ---
+  osNaoEncontrada: () =>
+    new DomainError('OS_NAO_ENCONTRADA', 'Ordem de serviço não encontrada.', 404),
 };
