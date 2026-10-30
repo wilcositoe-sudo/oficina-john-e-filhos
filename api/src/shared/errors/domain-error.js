@@ -67,4 +67,16 @@ export const erros = {
     new DomainError('OS_NAO_ENCONTRADA', 'Ordem de serviço não encontrada.', 404),
   rn04SemServico: () =>
     new DomainError('RN04_SEM_SERVICO', 'Só é possível concluir com pelo menos um serviço lançado.', 409),
+
+  // --- Pagamentos e recibos (RF06/RF13/RF14, RN06) ---
+  osNaoElegivelPagamento: (estado) =>
+    new DomainError('OS_NAO_ELEGIVEL_PAGAMENTO', 'O pagamento só é permitido para OS concluída.', 409, { estadoAtual: estado }),
+  valorPagamentoInvalido: (esperado) =>
+    new DomainError('VALOR_PAGAMENTO_INVALIDO', `O valor tem de corresponder ao total da OS (${esperado} MZN).`, 422, { valorEsperado: esperado }),
+  pagamentoNaoEncontrado: () =>
+    new DomainError('PAGAMENTO_NAO_ENCONTRADO', 'Pagamento não encontrado.', 404),
+  pagamentoNaoConfirmado: () =>
+    new DomainError('PAGAMENTO_NAO_CONFIRMADO', 'O recibo só está disponível após confirmação do pagamento.', 409),
+  reciboNaoEncontrado: () =>
+    new DomainError('RECIBO_NAO_ENCONTRADO', 'Recibo não encontrado.', 404),
 };

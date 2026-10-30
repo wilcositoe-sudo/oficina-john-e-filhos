@@ -1,0 +1,1 @@
+CREATE SEQUENCE IF NOT EXISTS recibos_numero_seq;
