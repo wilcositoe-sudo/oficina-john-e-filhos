@@ -24,7 +24,7 @@ const TRANSICOES = {
   CANCELADA: [],
 };
 
-// Ações de domínio → estado destino (F9/F10 acrescentam pagar/entregar)
+// Ações de domínio → estado destino
 export const ACOES_TRANSICAO = Object.freeze({
   iniciar_diagnostico: 'EM_DIAGNOSTICO',
   aguardar_aprovacao: 'AGUARDANDO_APROVACAO_ORCAMENTO',
@@ -32,9 +32,10 @@ export const ACOES_TRANSICAO = Object.freeze({
   aguardar_pecas: 'AGUARDANDO_PECAS',
   concluir: 'CONCLUIDA',
   cancelar: 'CANCELADA',
+  entregar: 'ENTREGUE', // F10 — staff confirma entrega/levantamento
 });
 
-// Estados em que ainda é possível lançar linhas de serviço/peças
+// Estados em que ainda é possível lançar linhas ou escolher modalidade de entrega
 const EDITAVEIS = [
   'PENDENTE',
   'EM_DIAGNOSTICO',

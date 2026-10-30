@@ -14,6 +14,7 @@ import { criarListarHistoricoOs } from '../use-cases/listar-historico-os.js';
 import { criarAdicionarServico } from '../use-cases/adicionar-servico.js';
 import { criarAdicionarPeca } from '../use-cases/adicionar-peca.js';
 import { criarTransitarOs } from '../use-cases/transitar-os.js';
+import { criarEscolherEntrega } from '../use-cases/escolher-entrega.js';
 
 export function createWorkOrdersRouter() {
   const router = Router();
@@ -38,6 +39,7 @@ export function createWorkOrdersRouter() {
   const adicionarServico = criarAdicionarServico({ osRepo });
   const adicionarPeca = criarAdicionarPeca({ osRepo });
   const transitar = criarTransitarOs({ osRepo });
+  const escolherEntrega = criarEscolherEntrega({ osRepo });
 
   const isStaff = (req) => ['FUNCIONARIO', 'ADMINISTRADOR'].includes(req.utilizador.perfil);
 
@@ -63,11 +65,15 @@ export function createWorkOrdersRouter() {
   }));
 
   router.get('/ordens/:id/linhas', ...autenticado, asyncRoute(async (req, res) => {
-    await detalhe({ id: req.params.id, utilizador: req.utilizador, isStaff: isStaff(req) }); // ownership
+    await detalhe({ id: req.params.id, utilizador: req.utilizador, isStaff: isStaff(req) });
     res.json({ data: await osRepo.listarLinhas(req.params.id) });
   }));
 
-  // RF12 — linhas com snapshot de preço e stock atómico
+  // RF07 — modalidade e taxa de entrega (cliente dono ou staff, antes de concluir)
+  router.post('/ordens/:id/entrega', ...autenticado, asyncRoute(async (req, res) => {
+    res.json({ data: await escolherEntrega({ ordemId: req.params.id, utilizador: req.utilizador, ...(req.body ?? {}) }) });
+  }));
+
   router.post('/ordens/:id/servicos', ...staff, asyncRoute(async (req, res) => {
     res.status(201).json({ data: await adicionarServico({ ordemId: req.params.id, ...(req.body ?? {}) }) });
   }));
@@ -76,7 +82,6 @@ export function createWorkOrdersRouter() {
     res.status(201).json({ data: await adicionarPeca({ ordemId: req.params.id, ...(req.body ?? {}) }) });
   }));
 
-  // RN03 — transições só por ação de domínio
   router.post('/ordens/:id/transicoes', ...staff, asyncRoute(async (req, res) => {
     res.json({ data: await transitar({ id: req.params.id, utilizador: req.utilizador, ...(req.body ?? {}) }) });
   }));

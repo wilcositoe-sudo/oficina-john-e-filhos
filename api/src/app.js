@@ -10,6 +10,7 @@ import { createWorkOrdersRouter } from './modules/work-orders/http/work-orders-r
 import { createPartsRouter } from './modules/parts/http/parts-routes.js';
 import { createMessagingRouter } from './modules/messaging/http/messaging-routes.js';
 import { createPaymentsRouter } from './modules/payments/http/payments-routes.js';
+import { createRatingsRouter } from './modules/ratings/http/ratings-routes.js';
 import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
@@ -35,6 +36,7 @@ export function createApp() {
   app.use('/api/v1', createPartsRouter());
   app.use('/api/v1', createMessagingRouter());
   app.use('/api/v1', createPaymentsRouter());
+  app.use('/api/v1', createRatingsRouter());
 
   app.use((req, res) => {
     res.status(404).json({

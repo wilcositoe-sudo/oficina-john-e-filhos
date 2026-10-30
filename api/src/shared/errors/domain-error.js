@@ -62,7 +62,7 @@ export const erros = {
   horarioInvalido: (msg = 'Horário inválido.') =>
     new DomainError('HORARIO_INVALIDO', msg, 422),
 
-  // --- Ordens de serviço (RF11/RF12, RN03, RN04, RN07) ---
+  // --- Ordens de serviço ---
   osNaoEncontrada: () =>
     new DomainError('OS_NAO_ENCONTRADA', 'Ordem de serviço não encontrada.', 404),
   rn04SemServico: () =>
@@ -79,4 +79,12 @@ export const erros = {
     new DomainError('PAGAMENTO_NAO_CONFIRMADO', 'O recibo só está disponível após confirmação do pagamento.', 409),
   reciboNaoEncontrado: () =>
     new DomainError('RECIBO_NAO_ENCONTRADO', 'Recibo não encontrado.', 404),
+
+  // --- Entrega e avaliações (RF07/RF08/RF09) ---
+  modalidadeInvalida: () =>
+    new DomainError('MODALIDADE_INVALIDA', 'Modalidade inválida. Use LEVANTAMENTO ou DOMICILIO.', 422),
+  osNaoElegivelAvaliacao: (estado) =>
+    new DomainError('OS_NAO_ELEGIVEL_AVALIACAO', 'Só pode avaliar após a entrega do veículo.', 409, { estadoAtual: estado }),
+  avaliacaoExistente: () =>
+    new DomainError('AVALIACAO_EXISTENTE', 'Esta ordem de serviço já foi avaliada.', 409),
 };

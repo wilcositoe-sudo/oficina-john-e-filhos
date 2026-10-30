@@ -123,8 +123,6 @@ export function criarPgOsRepository() {
           await client.query('ROLLBACK');
           throw erros.servicoInativo();
         }
-        // RN05B: snapshot do preço atual — futuras alterações do catálogo NÃO reescrevem a linha.
-        // Todos os parâmetros com cast explícito (servicos_os.quantidade é NUMERIC).
         const { rows: linha } = await client.query(
           `INSERT INTO servicos_os (ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal)
            VALUES ($1::bigint, $2::bigint, $3::text, $4::numeric, $5::numeric, $5::numeric * $4::numeric)
@@ -146,7 +144,6 @@ export function criarPgOsRepository() {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        // Doc 09 §9.6: débito CONDICIONAL e atómico — nunca SELECT + UPDATE soltos
         const { rows: p } = await client.query(
           `UPDATE pecas
            SET quantidade_stock = quantidade_stock - $2::int
@@ -163,7 +160,6 @@ export function criarPgOsRepository() {
           if (!existe[0]) throw erros.pecaNaoEncontrada();
           throw erros.stockInsuficiente();
         }
-        // pecas_os.quantidade é INTEGER → casts explícitos; numeric * int → numeric exato (RN05)
         const { rows: linha } = await client.query(
           `INSERT INTO pecas_os (ordem_id, peca_id, quantidade, preco_unitario, subtotal)
            VALUES ($1::bigint, $2::bigint, $3::int, $4::numeric, $4::numeric * $3::int)
@@ -203,6 +199,29 @@ export function criarPgOsRepository() {
       return rows[0].n;
     },
 
+    // RF07 — modalidade e taxa persistidas; total recomputado na mesma transação
+    async definirEntrega({ ordemId, modalidade, taxaEntrega }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `UPDATE ordens_servico
+           SET modalidade_entrega = $2::text, taxa_entrega = $3::numeric, updated_at = now()
+           WHERE id = $1::bigint`,
+          [ordemId, modalidade, taxaEntrega],
+        );
+        const { rows: total } = await client.query(SQL_RECOMPUTAR_TOTAL, [ordemId]);
+        const { rows } = await client.query(`${SELECT_BASE} WHERE o.id = $1::bigint`, [ordemId]);
+        await client.query('COMMIT');
+        return { ...map(rows[0]), valorTotal: total[0].valor_total };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
     async transitar({ ordemId, estadoAnterior, estadoNovo, utilizadorId, motivo }) {
       const client = await pool.connect();
       try {
@@ -219,7 +238,7 @@ export function criarPgOsRepository() {
         );
         if (!rows[0]) {
           await client.query('ROLLBACK');
-          return null; // estado mudou entretanto (corrida)
+          return null;
         }
         await client.query(
           `INSERT INTO historico_estado (ordem_id, estado_anterior, estado_novo, utilizador_id, motivo)
