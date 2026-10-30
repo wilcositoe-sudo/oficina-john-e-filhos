@@ -11,6 +11,9 @@ import { criarDetalheOs } from '../use-cases/detalhe-os.js';
 import { criarListarMinhasOs } from '../use-cases/listar-minhas-os.js';
 import { criarListarOsStaff } from '../use-cases/listar-os-staff.js';
 import { criarListarHistoricoOs } from '../use-cases/listar-historico-os.js';
+import { criarAdicionarServico } from '../use-cases/adicionar-servico.js';
+import { criarAdicionarPeca } from '../use-cases/adicionar-peca.js';
+import { criarTransitarOs } from '../use-cases/transitar-os.js';
 
 export function createWorkOrdersRouter() {
   const router = Router();
@@ -32,10 +35,12 @@ export function createWorkOrdersRouter() {
   const listarMinhas = criarListarMinhasOs({ osRepo });
   const listarStaff = criarListarOsStaff({ osRepo });
   const historico = criarListarHistoricoOs({ osRepo });
+  const adicionarServico = criarAdicionarServico({ osRepo });
+  const adicionarPeca = criarAdicionarPeca({ osRepo });
+  const transitar = criarTransitarOs({ osRepo });
 
   const isStaff = (req) => ['FUNCIONARIO', 'ADMINISTRADOR'].includes(req.utilizador.perfil);
 
-  // RN02: o corpo nunca traz estado — o servidor impõe PENDENTE
   router.post('/ordens', ...staff, asyncRoute(async (req, res) => {
     const resultado = await criar({ funcionarioId: req.utilizador.id, ...(req.body ?? {}) });
     res.status(201).json({ data: resultado });
@@ -55,6 +60,25 @@ export function createWorkOrdersRouter() {
 
   router.get('/ordens/:id/historico', ...autenticado, asyncRoute(async (req, res) => {
     res.json({ data: await historico({ id: req.params.id, utilizador: req.utilizador, isStaff: isStaff(req) }) });
+  }));
+
+  router.get('/ordens/:id/linhas', ...autenticado, asyncRoute(async (req, res) => {
+    await detalhe({ id: req.params.id, utilizador: req.utilizador, isStaff: isStaff(req) }); // ownership
+    res.json({ data: await osRepo.listarLinhas(req.params.id) });
+  }));
+
+  // RF12 — linhas com snapshot de preço e stock atómico
+  router.post('/ordens/:id/servicos', ...staff, asyncRoute(async (req, res) => {
+    res.status(201).json({ data: await adicionarServico({ ordemId: req.params.id, ...(req.body ?? {}) }) });
+  }));
+
+  router.post('/ordens/:id/pecas', ...staff, asyncRoute(async (req, res) => {
+    res.status(201).json({ data: await adicionarPeca({ ordemId: req.params.id, ...(req.body ?? {}) }) });
+  }));
+
+  // RN03 — transições só por ação de domínio
+  router.post('/ordens/:id/transicoes', ...staff, asyncRoute(async (req, res) => {
+    res.json({ data: await transitar({ id: req.params.id, utilizador: req.utilizador, ...(req.body ?? {}) }) });
   }));
 
   return router;

@@ -1,5 +1,5 @@
 // Máquina de estados da OS (Doc 03 §3.8 — hipótese canónica, pendente de aprovação Q01).
-// RN03: transições só por ação; o browser nunca envia estado livre.
+// RN03: transições só por AÇÃO; o browser nunca envia estado livre (Doc 10 §10.6).
 export const ESTADOS_OS = Object.freeze({
   PENDENTE: 'PENDENTE',
   EM_DIAGNOSTICO: 'EM_DIAGNOSTICO',
@@ -24,10 +24,33 @@ const TRANSICOES = {
   CANCELADA: [],
 };
 
+// Ações de domínio → estado destino (F9/F10 acrescentam pagar/entregar)
+export const ACOES_TRANSICAO = Object.freeze({
+  iniciar_diagnostico: 'EM_DIAGNOSTICO',
+  aguardar_aprovacao: 'AGUARDANDO_APROVACAO_ORCAMENTO',
+  iniciar_reparacao: 'EM_REPARACAO',
+  aguardar_pecas: 'AGUARDANDO_PECAS',
+  concluir: 'CONCLUIDA',
+  cancelar: 'CANCELADA',
+});
+
+// Estados em que ainda é possível lançar linhas de serviço/peças
+const EDITAVEIS = [
+  'PENDENTE',
+  'EM_DIAGNOSTICO',
+  'AGUARDANDO_APROVACAO_ORCAMENTO',
+  'EM_REPARACAO',
+  'AGUARDANDO_PECAS',
+];
+
 export function podeTransitar(de, para) {
   return (TRANSICOES[de] ?? []).includes(para);
 }
 
 export function destinosPossiveis(de) {
   return TRANSICOES[de] ?? [];
+}
+
+export function podeEditar(estado) {
+  return EDITAVEIS.includes(estado);
 }

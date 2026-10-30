@@ -1,4 +1,5 @@
 import { pool } from '../../../shared/db/pool.js';
+import { erros, DomainError } from '../../../shared/errors/domain-error.js';
 
 const SELECT_BASE = `
   SELECT o.id, o.numero_os, o.estado, o.descricao_problema, o.valor_total,
@@ -30,10 +31,23 @@ const mapHistorico = (r) => ({
   motivo: r.motivo,
 });
 
+// RN05: total = serviços + peças + taxa — sempre derivado no servidor, nunca do browser.
+const SQL_RECOMPUTAR_TOTAL = `
+  UPDATE ordens_servico
+  SET valor_total = COALESCE((SELECT SUM(subtotal) FROM servicos_os WHERE ordem_id = $1), 0)
+                  + COALESCE((SELECT SUM(subtotal) FROM pecas_os WHERE ordem_id = $1), 0)
+                  + taxa_entrega,
+      updated_at = now()
+  WHERE id = $1 RETURNING valor_total`;
+
+const SQL_PROPRIETARIO = `
+  (SELECT u.id FROM ordens_servico o2
+   JOIN clientes c ON c.id = o2.cliente_id
+   JOIN utilizadores u ON u.id = c.utilizador_id
+   WHERE o2.id = $1) AS utilizador_id`;
+
 export function criarPgOsRepository() {
   return {
-    // RN02: estado inicial PENDENTE imposto aqui (nunca vem do browser).
-    // RN03: histórico inicial gravado na MESMA transação.
     async criar({ clienteId, veiculoId, funcionarioId, descricaoProblema, orcamentoId }) {
       const client = await pool.connect();
       try {
@@ -91,6 +105,133 @@ export function criarPgOsRepository() {
         [ordemId],
       );
       return rows.map(mapHistorico);
+    },
+
+    async adicionarServico({ ordemId, servicoId, quantidade }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: s } = await client.query(
+          `SELECT id, nome, preco_base, ativo FROM servicos WHERE id = $1 FOR UPDATE`,
+          [servicoId],
+        );
+        if (!s[0]) {
+          await client.query('ROLLBACK');
+          throw erros.servicoNaoEncontrado();
+        }
+        if (!s[0].ativo) {
+          await client.query('ROLLBACK');
+          throw erros.servicoInativo();
+        }
+        // RN05B: snapshot do preço atual — futuras alterações do catálogo NÃO reescrevem a linha
+        const { rows: linha } = await client.query(
+          `INSERT INTO servicos_os (ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $5 * $4::numeric)
+           RETURNING id, descricao_snapshot, quantidade, preco_unitario, subtotal`,
+          [ordemId, servicoId, s[0].nome, quantidade, s[0].preco_base],
+        );
+        const { rows: total } = await client.query(SQL_RECOMPUTAR_TOTAL, [ordemId]);
+        await client.query('COMMIT');
+        return { linha: linha[0], valorTotal: total[0].valor_total };
+      } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async adicionarPeca({ ordemId, pecaId, quantidade }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: p } = await client.query(
+          `UPDATE pecas
+           SET quantidade_stock = quantidade_stock - $2
+           WHERE id = $1 AND ativo = TRUE AND quantidade_stock >= $2
+           RETURNING id, nome, preco_unitario`,
+          [pecaId, quantidade],
+        );
+        if (!p[0]) {
+          await client.query('ROLLBACK');
+          // Distinção: existe mas sem stock (ou inativa) vs não existe
+          const { rows: existe } = await pool.query(
+            'SELECT ativo, quantidade_stock FROM pecas WHERE id = $1',
+            [pecaId],
+          );
+          if (!existe[0]) throw erros.pecaNaoEncontrada();
+          throw erros.stockInsuficiente();
+        }
+        const { rows: linha } = await client.query(
+          `INSERT INTO pecas_os (ordem_id, peca_id, quantidade, preco_unitario, subtotal)
+           VALUES ($1, $2, $3, $4, $4 * $3::numeric)
+           RETURNING id, quantidade, preco_unitario, subtotal`,
+          [ordemId, pecaId, quantidade, p[0].preco_unitario],
+        );
+        const { rows: total } = await client.query(SQL_RECOMPUTAR_TOTAL, [ordemId]);
+        await client.query('COMMIT');
+        return { linha: linha[0], valorTotal: total[0].valor_total };
+      } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async listarLinhas(ordemId) {
+      const { rows: servicos } = await pool.query(
+        `SELECT id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal
+         FROM servicos_os WHERE ordem_id = $1 ORDER BY id`,
+        [ordemId],
+      );
+      const { rows: pecas } = await pool.query(
+        `SELECT id, peca_id, quantidade, preco_unitario, subtotal
+         FROM pecas_os WHERE ordem_id = $1 ORDER BY id`,
+        [ordemId],
+      );
+      return { servicos, pecas };
+    },
+
+    async contarServicos(ordemId) {
+      const { rows } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM servicos_os WHERE ordem_id = $1',
+        [ordemId],
+      );
+      return rows[0].n;
+    },
+
+    async transitar({ ordemId, estadoAnterior, estadoNovo, utilizadorId, motivo }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          `UPDATE ordens_servico
+           SET estado = $2,
+               data_conclusao = CASE WHEN $2 = 'CONCLUIDA' THEN now() ELSE data_conclusao END,
+               updated_at = now()
+           WHERE id = $1 AND estado = $3
+           RETURNING id, numero_os, estado, descricao_problema, valor_total, taxa_entrega,
+                     modalidade_entrega, data_conclusao, created_at, ${SQL_PROPRIETARIO}`,
+          [ordemId, estadoNovo, estadoAnterior],
+        );
+        if (!rows[0]) {
+          await client.query('ROLLBACK');
+          return null; // estado mudou entretanto (corrida)
+        }
+        await client.query(
+          `INSERT INTO historico_estado (ordem_id, estado_anterior, estado_novo, utilizador_id, motivo)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [ordemId, estadoAnterior, estadoNovo, utilizadorId, motivo],
+        );
+        await client.query('COMMIT');
+        return map(rows[0]);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   };
 }

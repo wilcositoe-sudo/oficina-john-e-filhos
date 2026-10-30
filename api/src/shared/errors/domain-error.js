@@ -33,12 +33,20 @@ export const erros = {
   // --- Catálogo (RF01) ---
   servicoNaoEncontrado: () =>
     new DomainError('SERVICO_NAO_ENCONTRADO', 'Servíço não encontrado.', 404),
+  servicoInativo: () =>
+    new DomainError('SERVICO_INATIVO', 'Este serviço está inativo e não pode ser lançado.', 409),
 
   // --- Veículos (RN01) ---
   matriculaEmUso: () =>
     new DomainError('MATRICULA_EM_USO', 'Já existe um veículo com esta matrícula.', 409),
   veiculoNaoEncontrado: () =>
     new DomainError('VEICULO_NAO_ENCONTRADO', 'Veículo não encontrado.', 404),
+
+  // --- Peças e stock (RF12, Doc 09 §9.6) ---
+  pecaNaoEncontrada: () =>
+    new DomainError('PECA_NAO_ENCONTRADA', 'Peça não encontrada.', 404),
+  stockInsuficiente: () =>
+    new DomainError('STOCK_INSUFICIENTE', 'Stock insuficiente para esta quantidade.', 409),
 
   // --- Orçamentos (RF02, State) ---
   orcamentoNaoEncontrado: () =>
@@ -54,7 +62,9 @@ export const erros = {
   horarioInvalido: (msg = 'Horário inválido.') =>
     new DomainError('HORARIO_INVALIDO', msg, 422),
 
-  // --- Ordens de serviço (RF11/RF12, RN03, RN07) ---
+  // --- Ordens de serviço (RF11/RF12, RN03, RN04, RN07) ---
   osNaoEncontrada: () =>
     new DomainError('OS_NAO_ENCONTRADA', 'Ordem de serviço não encontrada.', 404),
+  rn04SemServico: () =>
+    new DomainError('RN04_SEM_SERVICO', 'Só é possível concluir com pelo menos um serviço lançado.', 409),
 };
