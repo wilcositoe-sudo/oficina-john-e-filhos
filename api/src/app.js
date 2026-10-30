@@ -1,17 +1,19 @@
 import express from 'express';
-import { createAuthRouter } from './modules/auth/http/auth-routes.js';
-import { logger } from './shared/logging/logger.js';
-import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
-import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
 import cors from 'cors';
 import { config } from './config.js';
-
+import { createAuthRouter } from './modules/auth/http/auth-routes.js';
+import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
+import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
+import { createQuotesRouter } from './modules/quotes/http/quotes-routes.js';
+import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
+
+  // CORS restrito à origem real do frontend (Doc 11 §11.2) — nunca '*'
   app.use(cors({ origin: config.webOrigin }));
 
   app.get('/health', (req, res) => {
@@ -22,6 +24,8 @@ export function createApp() {
   app.use('/api/v1/auth', createAuthRouter());
   app.use('/api/v1', createCatalogRouter());
   app.use('/api/v1', createVehicleRouter());
+  app.use('/api/v1', createQuotesRouter());
+
   app.use((req, res) => {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.' },
@@ -32,7 +36,7 @@ export function createApp() {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     const status = Number.isInteger(err.status) ? err.status : 500;
-    if (status === 500) logger.error({ message: err.message }, 'erro não tratado');
+       if (status === 500) logger.error('erro não tratado', { erro: err.message });
     res.status(status).json({
       error: {
         code: err.code ?? 'INTERNAL_ERROR',
