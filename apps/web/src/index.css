@@ -172,3 +172,27 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 
 .historico { list-style: none; padding: 0; margin: 8px 0 0; }
 .historico li { padding: 6px 0; border-bottom: 1px solid #E3EAF0; }
+
+.chat-mensagens {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--fundo);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.chat-linha { display: flex; }
+.chat-linha.chat-cliente { justify-content: flex-end; }
+.chat-bolha {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--branco);
+  border: 1px solid #E3EAF0;
+}
+.chat-cliente .chat-bolha { background: var(--secundaria); color: var(--branco); border-color: var(--secundaria); }
+.chat-cliente .chat-bolha small { opacity: 0.8; }
+.chat-bolha p { margin: 4px 0 0; }

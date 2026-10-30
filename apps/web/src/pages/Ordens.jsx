@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 
 const ROTULO_ESTADO = {
@@ -13,7 +13,6 @@ const ROTULO_ESTADO = {
   CANCELADA: 'Cancelada',
 };
 
-// Ações possíveis por estado (sugestão de UI — o SERVIDOR é quem valida)
 const ACOES_POR_ESTADO = {
   PENDENTE: ['iniciar_diagnostico', 'cancelar'],
   EM_DIAGNOSTICO: ['aguardar_aprovacao', 'iniciar_reparacao', 'cancelar'],
@@ -37,6 +36,8 @@ const ROTULO_ACAO = {
 
 const fmtData = (iso) =>
   iso ? new Date(iso).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo' }) : '—';
+const fmtHora = (iso) =>
+  new Date(iso).toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit' });
 const fmtMoeda = (v) => `${Number(v ?? 0).toFixed(2)} MZN`;
 
 export default function Ordens({ perfil }) {
@@ -97,7 +98,12 @@ function VistaCliente() {
           </tbody>
         </table>
       )}
-      {detalhe && <PainelDetalhe detalhe={detalhe} mostrarAcoes={false} />}
+      {detalhe && (
+        <>
+          <PainelDetalhe detalhe={detalhe} mostrarAcoes={false} />
+          <ChatOrdem ordemId={detalhe.os.id} />
+        </>
+      )}
     </section>
   );
 }
@@ -107,13 +113,11 @@ function VistaStaff() {
   const [lista, setLista] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [erro, setErro] = useState('');
-  // nova OS
   const [emailCliente, setEmailCliente] = useState('');
   const [veiculosCliente, setVeiculosCliente] = useState([]);
   const [veiculoId, setVeiculoId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [msg, setMsg] = useState('');
-  // linhas
   const [catalogo, setCatalogo] = useState([]);
   const [servicoId, setServicoId] = useState('');
   const [quantidade, setQuantidade] = useState(1);
@@ -274,6 +278,7 @@ function VistaStaff() {
               </div>
             </div>
           )}
+          <ChatOrdem ordemId={detalhe.os.id} />
         </>
       )}
     </section>
@@ -326,6 +331,68 @@ function PainelDetalhe({ detalhe, mostrarAcoes }) {
         ))}
       </ul>
       {!mostrarAcoes && <p className="vazio"><small>Acompanhe o estado da sua reparação aqui.</small></p>}
+    </div>
+  );
+}
+
+// ===================== CHAT DA OS (RF05/RF10 — polling 5s, DEC-P09) =====================
+function ChatOrdem({ ordemId }) {
+  const [mensagens, setMensagens] = useState([]);
+  const [texto, setTexto] = useState('');
+  const [erro, setErro] = useState('');
+  const fimRef = useRef(null);
+
+  async function carregar() {
+    try {
+      setMensagens(await api('GET', `/ordens/${ordemId}/mensagens`));
+    } catch {
+      /* mantém mensagens em memória se a rede falhar */
+    }
+  }
+
+  useEffect(() => {
+    carregar();
+    const timer = setInterval(carregar, 5000); // polling simples — SSE/WebSocket fica para evolução
+    return () => clearInterval(timer);
+  }, [ordemId]);
+
+  useEffect(() => {
+    fimRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [mensagens]);
+
+  async function enviar(e) {
+    e.preventDefault();
+    if (!texto.trim()) return;
+    setErro('');
+    try {
+      await api('POST', `/ordens/${ordemId}/mensagens`, { body: { conteudo: texto } });
+      setTexto('');
+      await carregar();
+    } catch (err) {
+      setErro(err.message);
+    }
+  }
+
+  return (
+    <div className="cartao chat" style={{ marginTop: 16 }}>
+      <h3>Conversa com a oficina</h3>
+      <div className="chat-mensagens">
+        {mensagens.length === 0 && <p className="vazio">Ainda sem mensagens. Escreva abaixo.</p>}
+        {mensagens.map((m) => (
+          <div key={m.id} className={`chat-linha ${m.remetentePerfil === 'CLIENTE' ? 'chat-cliente' : 'chat-staff'}`}>
+            <div className="chat-bolha">
+              <small>{m.remetenteNome} · {fmtHora(m.enviadoAt)}</small>
+              <p>{m.conteudo}</p>
+            </div>
+          </div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <form className="linha-row" onSubmit={enviar}>
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva a sua mensagem…" maxLength={2000} />
+        <button className="botao" type="submit">Enviar</button>
+      </form>
+      {erro && <p className="erro" role="alert">{erro}</p>}
     </div>
   );
 }
