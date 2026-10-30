@@ -8,6 +8,7 @@ import Veiculos from './pages/Veiculos.jsx';
 import Orcamentos from './pages/Orcamentos.jsx';
 import Agendamentos from './pages/Agendamentos.jsx';
 import Ordens from './pages/Ordens.jsx';
+import Avaliacoes from './pages/Avaliacoes.jsx';
 import { api, getToken, setToken } from './lib/api.js';
 
 export default function App() {
@@ -55,6 +56,7 @@ export default function App() {
 
   const tabs = [
     { id: 'catalogo', label: 'Catálogo', mostrar: true },
+    { id: 'avaliacoes', label: 'Avaliações', mostrar: true },
     { id: 'veiculos', label: 'Veículos', mostrar: isCliente },
     { id: 'gestao', label: 'Serviços', mostrar: isStaff },
     { id: 'pecas', label: 'Peças', mostrar: isStaff },
@@ -81,6 +83,7 @@ export default function App() {
       </header>
       <main className="conteudo">
         {separador === 'catalogo' && <Catalogo />}
+        {separador === 'avaliacoes' && <Avaliacoes />}
         {separador === 'veiculos' && <Veiculos />}
         {separador === 'gestao' && <GestaoServicos />}
         {separador === 'pecas' && <Pecas />}

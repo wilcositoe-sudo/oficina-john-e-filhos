@@ -20,10 +20,12 @@ const ACOES_POR_ESTADO = {
   EM_REPARACAO: ['aguardar_pecas', 'concluir', 'cancelar'],
   AGUARDANDO_PECAS: ['iniciar_reparacao', 'cancelar'],
   CONCLUIDA: [],
-  PAGA: [],
+  PAGA: ['entregar'],
   ENTREGUE: [],
   CANCELADA: [],
 };
+
+const ESTADOS_EDITAVEIS = ['PENDENTE', 'EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO_ORCAMENTO', 'EM_REPARACAO', 'AGUARDANDO_PECAS'];
 
 const ROTULO_ACAO = {
   iniciar_diagnostico: 'Iniciar diagnóstico',
@@ -32,6 +34,7 @@ const ROTULO_ACAO = {
   aguardar_pecas: 'Aguardar peças',
   concluir: 'Concluir',
   cancelar: 'Cancelar',
+  entregar: 'Confirmar entrega',
 };
 
 const ROTULO_METODO = { PRESENCIAL: 'Presencial', CARTAO: 'Cartão', MOBILE_MONEY: 'Mobile Money' };
@@ -41,6 +44,7 @@ const ROTULO_PAG_ESTADO = {
   RECUSADO: 'Recusado',
   CANCELADO: 'Cancelado',
 };
+const ROTULO_MODALIDADE = { LEVANTAMENTO: 'Levantamento na oficina', DOMICILIO: 'Entrega ao domicílio (+500.00 MZN)' };
 
 const fmtData = (iso) =>
   iso ? new Date(iso).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo' }) : '—';
@@ -108,7 +112,11 @@ function VistaCliente() {
       {detalhe && (
         <>
           <PainelDetalhe detalhe={detalhe} mostrarAcoes={false} />
+          {ESTADOS_EDITAVEIS.includes(detalhe.os.estado) && (
+            <EntregaOS os={detalhe.os} aoMudar={() => abrir(detalhe.os.id)} />
+          )}
           <PagamentosOS os={detalhe.os} isStaff={false} aoMudar={() => { abrir(detalhe.os.id); carregar(); }} />
+          {detalhe.os.estado === 'ENTREGUE' && <AvaliarOS os={detalhe.os} />}
           <ChatOrdem ordemId={detalhe.os.id} />
         </>
       )}
@@ -270,7 +278,7 @@ function VistaStaff() {
               ))}
             </div>
           )}
-          {['PENDENTE', 'EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO_ORCAMENTO', 'EM_REPARACAO', 'AGUARDANDO_PECAS'].includes(detalhe.os.estado) && (
+          {ESTADOS_EDITAVEIS.includes(detalhe.os.estado) && (
             <div className="cartao" style={{ marginTop: 16 }}>
               <h3>Lançar serviço</h3>
               <div className="linha-row">
@@ -285,6 +293,9 @@ function VistaStaff() {
                 <button className="botao" onClick={lancarServico} disabled={!servicoId}>Lançar</button>
               </div>
             </div>
+          )}
+          {ESTADOS_EDITAVEIS.includes(detalhe.os.estado) && (
+            <EntregaOS os={detalhe.os} aoMudar={() => abrir(detalhe.os.id)} />
           )}
           <PagamentosOS os={detalhe.os} isStaff={true} aoMudar={() => { abrir(detalhe.os.id); carregar(); }} />
           <ChatOrdem ordemId={detalhe.os.id} />
@@ -305,6 +316,10 @@ function PainelDetalhe({ detalhe, mostrarAcoes }) {
         <span className="orcamento-total">{fmtMoeda(os.valorTotal)}</span>
       </div>
       <p>{os.descricaoProblema}</p>
+      {os.modalidadeEntrega && (
+        <p><small>Entrega: {ROTULO_MODALIDADE[os.modalidadeEntrega] ?? os.modalidadeEntrega}
+          {Number(os.taxaEntrega) > 0 && ` (${fmtMoeda(os.taxaEntrega)})`}</small></p>
+      )}
       {os.dataConclusao && <p><small>Concluída em {fmtData(os.dataConclusao)}</small></p>}
 
       {(linhas.servicos.length > 0 || linhas.pecas.length > 0) && (
@@ -340,6 +355,44 @@ function PainelDetalhe({ detalhe, mostrarAcoes }) {
         ))}
       </ul>
       {!mostrarAcoes && <p className="vazio"><small>Acompanhe o estado da sua reparação aqui.</small></p>}
+    </div>
+  );
+}
+
+// ===================== ENTREGA (RF07) =====================
+function EntregaOS({ os, aoMudar }) {
+  const [modalidade, setModalidade] = useState(os.modalidadeEntrega ?? 'LEVANTAMENTO');
+  const [erro, setErro] = useState('');
+  const [info, setInfo] = useState('');
+
+  async function guardar() {
+    setErro('');
+    setInfo('');
+    try {
+      await api('POST', `/ordens/${os.id}/entrega`, { body: { modalidade } });
+      setInfo('Modalidade de entrega guardada. O total foi atualizado.');
+      aoMudar();
+    } catch (err) {
+      setErro(err.message);
+    }
+  }
+
+  return (
+    <div className="cartao" style={{ marginTop: 16 }}>
+      <h3>Modalidade de entrega</h3>
+      <div className="linha-row">
+        <select value={modalidade} onChange={(e) => setModalidade(e.target.value)}>
+          <option value="LEVANTAMENTO">Levantamento na oficina (grátis)</option>
+          <option value="DOMICILIO">Entrega ao domicílio (+500.00 MZN)</option>
+        </select>
+        <button className="botao botao-secundario" onClick={guardar}>Guardar</button>
+      </div>
+      {os.modalidadeEntrega && (
+        <p><small>Atual: {ROTULO_MODALIDADE[os.modalidadeEntrega]}
+          {Number(os.taxaEntrega) > 0 && ` — ${fmtMoeda(os.taxaEntrega)}`}</small></p>
+      )}
+      {info && <p className="info">{info}</p>}
+      {erro && <p className="erro" role="alert">{erro}</p>}
     </div>
   );
 }
@@ -385,11 +438,7 @@ function PagamentosOS({ os, isStaff, aoMudar }) {
       const r = await fetch(`${import.meta.env.VITE_API_BASE_URL}/webhooks/pagamentos/fake`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          referenciaInterna: pagamento.referenciaInterna,
-          resultado,
-          idEvento: novaChave(),
-        }),
+        body: JSON.stringify({ referenciaInterna: pagamento.referenciaInterna, resultado, idEvento: novaChave() }),
       });
       const json = await r.json();
       setInfo(json.data.duplicado ? 'Evento duplicado ignorado.' : `Resultado: ${json.data.estado ?? 'sem efeito'}`);
@@ -521,7 +570,53 @@ function PagamentosOS({ os, isStaff, aoMudar }) {
   );
 }
 
-// ===================== CHAT (scroll apenas dentro da caixa e só se perto do fim) =====================
+// ===================== AVALIAÇÃO (RF08) =====================
+function AvaliarOS({ os }) {
+  const [nota, setNota] = useState(5);
+  const [comentario, setComentario] = useState('');
+  const [estado, setEstado] = useState(''); // '' | 'ok' | 'ja-avaliada'
+  const [erro, setErro] = useState('');
+
+  async function submeter(e) {
+    e.preventDefault();
+    setErro('');
+    try {
+      await api('POST', `/ordens/${os.id}/avaliacoes`, { body: { classificacao: nota, comentario } });
+      setEstado('ok');
+    } catch (err) {
+      if (err.code === 'AVALIACAO_EXISTENTE') setEstado('ja-avaliada');
+      else setErro(err.message);
+    }
+  }
+
+  if (estado === 'ok') return <p className="info" style={{ marginTop: 16 }}>Obrigado pela sua avaliação!</p>;
+  if (estado === 'ja-avaliada') return <p className="vazio" style={{ marginTop: 16 }}>Já avaliou esta ordem de serviço.</p>;
+
+  return (
+    <div className="cartao" style={{ marginTop: 16 }}>
+      <h3>Avaliar o serviço</h3>
+      <form className="form-servico" onSubmit={submeter}>
+        <div className="estrelas-input" role="radiogroup" aria-label="Classificação de 1 a 5 estrelas">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button key={n} type="button"
+              className={`estrela ${n <= nota ? 'ativa' : ''}`}
+              onClick={() => setNota(n)}
+              aria-label={`${n} estrelas`}>
+              {n <= nota ? '★' : '☆'}
+            </button>
+          ))}
+        </div>
+        <label htmlFor="comentario">Comentário (opcional)</label>
+        <textarea id="comentario" rows="3" maxLength={1000} value={comentario}
+          onChange={(e) => setComentario(e.target.value)} />
+        {erro && <p className="erro" role="alert">{erro}</p>}
+        <button className="botao" type="submit">Enviar avaliação</button>
+      </form>
+    </div>
+  );
+}
+
+// ===================== CHAT =====================
 function ChatOrdem({ ordemId }) {
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
@@ -542,8 +637,6 @@ function ChatOrdem({ ordemId }) {
     return () => clearInterval(timer);
   }, [ordemId]);
 
-  // CORREÇÃO: scroll apenas DENTRO da caixa do chat e apenas quando o utilizador
-  // já está perto do fim — nunca puxa a página para baixo durante a leitura.
   useEffect(() => {
     const caixa = containerRef.current;
     if (!caixa) return;
