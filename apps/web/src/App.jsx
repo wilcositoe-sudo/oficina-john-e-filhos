@@ -3,6 +3,7 @@ import Login from './pages/Login.jsx';
 import Registo from './pages/Registo.jsx';
 import Catalogo from './pages/Catalogo.jsx';
 import GestaoServicos from './pages/GestaoServicos.jsx';
+import Pecas from './pages/Pecas.jsx';
 import Veiculos from './pages/Veiculos.jsx';
 import Orcamentos from './pages/Orcamentos.jsx';
 import Agendamentos from './pages/Agendamentos.jsx';
@@ -55,7 +56,8 @@ export default function App() {
   const tabs = [
     { id: 'catalogo', label: 'Catálogo', mostrar: true },
     { id: 'veiculos', label: 'Veículos', mostrar: isCliente },
-    { id: 'gestao', label: 'Gestão de serviços', mostrar: isStaff },
+    { id: 'gestao', label: 'Serviços', mostrar: isStaff },
+    { id: 'pecas', label: 'Peças', mostrar: isStaff },
     { id: 'orcamentos', label: 'Orçamentos', mostrar: true },
     { id: 'ordens', label: 'Ordens de serviço', mostrar: true },
     { id: 'agenda', label: 'Agendamentos', mostrar: isCliente },
@@ -81,6 +83,7 @@ export default function App() {
         {separador === 'catalogo' && <Catalogo />}
         {separador === 'veiculos' && <Veiculos />}
         {separador === 'gestao' && <GestaoServicos />}
+        {separador === 'pecas' && <Pecas />}
         {separador === 'orcamentos' && <Orcamentos perfil={utilizador.perfil} />}
         {separador === 'ordens' && <Ordens perfil={utilizador.perfil} />}
         {separador === 'agenda' && <Agendamentos />}
