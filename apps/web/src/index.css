@@ -169,3 +169,6 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 .linha-row .input-pequeno { flex: 0 0 80px; }
 
 .botao-perigo { background: #B03A2E; }
+
+.historico { list-style: none; padding: 0; margin: 8px 0 0; }
+.historico li { padding: 6px 0; border-bottom: 1px solid #E3EAF0; }

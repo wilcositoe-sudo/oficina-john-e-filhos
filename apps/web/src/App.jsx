@@ -6,10 +6,11 @@ import GestaoServicos from './pages/GestaoServicos.jsx';
 import Veiculos from './pages/Veiculos.jsx';
 import Orcamentos from './pages/Orcamentos.jsx';
 import Agendamentos from './pages/Agendamentos.jsx';
+import Ordens from './pages/Ordens.jsx';
 import { api, getToken, setToken } from './lib/api.js';
 
 export default function App() {
-  const [vista, setVista] = useState('login'); // 'login' | 'registo' | 'app'
+  const [vista, setVista] = useState('login');
   const [utilizador, setUtilizador] = useState(null);
   const [aCarregar, setACarregar] = useState(!!getToken());
   const [separador, setSeparador] = useState('catalogo');
@@ -48,7 +49,6 @@ export default function App() {
     );
   }
 
-  // Tabs por perfil (Doc 04 §4.3 — ocultar é só UX, o servidor impõe)
   const isCliente = utilizador.perfil === 'CLIENTE';
   const isStaff = ['FUNCIONARIO', 'ADMINISTRADOR'].includes(utilizador.perfil);
 
@@ -57,6 +57,7 @@ export default function App() {
     { id: 'veiculos', label: 'Veículos', mostrar: isCliente },
     { id: 'gestao', label: 'Gestão de serviços', mostrar: isStaff },
     { id: 'orcamentos', label: 'Orçamentos', mostrar: true },
+    { id: 'ordens', label: 'Ordens de serviço', mostrar: true },
     { id: 'agenda', label: 'Agendamentos', mostrar: isCliente },
   ].filter((t) => t.mostrar);
 
@@ -81,6 +82,7 @@ export default function App() {
         {separador === 'veiculos' && <Veiculos />}
         {separador === 'gestao' && <GestaoServicos />}
         {separador === 'orcamentos' && <Orcamentos perfil={utilizador.perfil} />}
+        {separador === 'ordens' && <Ordens perfil={utilizador.perfil} />}
         {separador === 'agenda' && <Agendamentos />}
       </main>
     </div>
