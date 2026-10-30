@@ -114,3 +114,58 @@ input:focus { outline: 2px solid var(--destaque); border-color: var(--destaque);
 .tabela { width: 100%; border-collapse: collapse; background: var(--branco); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(23,54,93,0.15); }
 .tabela th, .tabela td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #E3EAF0; }
 .tabela th { background: var(--secundaria); color: var(--branco); }
+
+.ligacao {
+  background: none;
+  border: none;
+  color: var(--secundaria);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 0.9rem;
+}
+
+select, textarea {
+  padding: 10px;
+  border: 1px solid #C9D4DD;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color: var(--destaque); }
+
+.slots { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 24px; }
+.slot {
+  padding: 12px 18px;
+  border: 1px solid var(--destaque);
+  border-radius: 8px;
+  background: var(--branco);
+  color: var(--destaque);
+  font-weight: 700;
+  cursor: pointer;
+}
+.slot:disabled { opacity: 0.35; border-color: #C9D4DD; color: #9AA7B1; cursor: not-allowed; }
+
+.info { color: var(--destaque); font-weight: 600; }
+
+.orcamento-item { margin-bottom: 16px; }
+.orcamento-cabecalho { display: flex; align-items: center; gap: 12px; }
+.orcamento-total { margin-left: auto; font-weight: 700; color: var(--destaque); }
+
+.badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: #E3EAF0;
+  color: var(--secundaria);
+}
+.badge-aprovado { background: #E2F0D9; color: #2E7D32; }
+.badge-enviado { background: #FFF2CC; color: #8A6D00; }
+.badge-rejeitado, .badge-expirado { background: #FCE4D6; color: #B03A2E; }
+
+.proposta { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.linha-row { display: flex; gap: 8px; align-items: center; }
+.linha-row input { flex: 1; }
+.linha-row .input-pequeno { flex: 0 0 80px; }
+
+.botao-perigo { background: #B03A2E; }

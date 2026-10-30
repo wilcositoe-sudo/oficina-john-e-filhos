@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, setToken } from '../lib/api.js';
 
-export default function Login({ aoEntrar }) {
+// UI01/RF19: erro genérico (não revela se a conta existe), estados loading/erro.
+export default function Login({ aoEntrar, irParaRegisto }) {
   const [identificador, setIdentificador] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
@@ -55,6 +56,10 @@ export default function Login({ aoEntrar }) {
 
         <button className="botao" type="submit" disabled={loading}>
           {loading ? 'A entrar…' : 'Entrar'}
+        </button>
+
+        <button type="button" className="ligacao" onClick={irParaRegisto}>
+          Não tenho conta — criar conta
         </button>
       </form>
     </div>
