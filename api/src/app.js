@@ -5,6 +5,7 @@ import { createAuthRouter } from './modules/auth/http/auth-routes.js';
 import { createCatalogRouter } from './modules/catalog/http/catalog-routes.js';
 import { createVehicleRouter } from './modules/vehicles/http/vehicle-routes.js';
 import { createQuotesRouter } from './modules/quotes/http/quotes-routes.js';
+import { createAppointmentsRouter } from './modules/appointments/http/appointments-routes.js';
 import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
@@ -25,6 +26,7 @@ export function createApp() {
   app.use('/api/v1', createCatalogRouter());
   app.use('/api/v1', createVehicleRouter());
   app.use('/api/v1', createQuotesRouter());
+  app.use('/api/v1', createAppointmentsRouter());
 
   app.use((req, res) => {
     res.status(404).json({
@@ -36,7 +38,7 @@ export function createApp() {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     const status = Number.isInteger(err.status) ? err.status : 500;
-       if (status === 500) logger.error('erro não tratado', { erro: err.message });
+    if (status === 500) logger.error('erro não tratado', { erro: err.message });
     res.status(status).json({
       error: {
         code: err.code ?? 'INTERNAL_ERROR',

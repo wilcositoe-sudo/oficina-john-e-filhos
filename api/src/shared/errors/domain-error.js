@@ -43,4 +43,12 @@ export const erros = {
     new DomainError('ORCAMENTO_NAO_ENCONTRADO', 'Orçamento não encontrado.', 404),
   transicaoInvalida: (estadoAtual) =>
     new DomainError('TRANSICAO_INVALIDA', 'Esta ação não é válida no estado atual.', 409, { estadoAtual }),
+
+  // --- Agendamentos (RF03) ---
+  agendamentoNaoEncontrado: () =>
+    new DomainError('AGENDAMENTO_NAO_ENCONTRADO', 'Agendamento não encontrado.', 404),
+  slotIndisponivel: () =>
+    new DomainError('SLOT_INDISPONIVEL', 'Este horário acabou de ser ocupado. Escolha outro.', 409),
+  horarioInvalido: (msg = 'Horário inválido.') =>
+    new DomainError('HORARIO_INVALIDO', msg, 422),
 };
