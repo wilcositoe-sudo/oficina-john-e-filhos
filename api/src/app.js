@@ -8,6 +8,7 @@ import { createQuotesRouter } from './modules/quotes/http/quotes-routes.js';
 import { createAppointmentsRouter } from './modules/appointments/http/appointments-routes.js';
 import { createWorkOrdersRouter } from './modules/work-orders/http/work-orders-routes.js';
 import { createPartsRouter } from './modules/parts/http/parts-routes.js';
+import { createMessagingRouter } from './modules/messaging/http/messaging-routes.js';
 import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
@@ -31,6 +32,7 @@ export function createApp() {
   app.use('/api/v1', createAppointmentsRouter());
   app.use('/api/v1', createWorkOrdersRouter());
   app.use('/api/v1', createPartsRouter());
+  app.use('/api/v1', createMessagingRouter());
 
   app.use((req, res) => {
     res.status(404).json({
