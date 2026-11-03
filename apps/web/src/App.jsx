@@ -9,6 +9,7 @@ import Orcamentos from './pages/Orcamentos.jsx';
 import Agendamentos from './pages/Agendamentos.jsx';
 import Ordens from './pages/Ordens.jsx';
 import Avaliacoes from './pages/Avaliacoes.jsx';
+import Admin from './pages/Admin.jsx';
 import { api, getToken, setToken } from './lib/api.js';
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
 
   const isCliente = utilizador.perfil === 'CLIENTE';
   const isStaff = ['FUNCIONARIO', 'ADMINISTRADOR'].includes(utilizador.perfil);
+  const isAdmin = utilizador.perfil === 'ADMINISTRADOR';
 
   const tabs = [
     { id: 'catalogo', label: 'Catálogo', mostrar: true },
@@ -63,6 +65,7 @@ export default function App() {
     { id: 'orcamentos', label: 'Orçamentos', mostrar: true },
     { id: 'ordens', label: 'Ordens de serviço', mostrar: true },
     { id: 'agenda', label: 'Agendamentos', mostrar: isCliente },
+    { id: 'admin', label: 'Administração', mostrar: isAdmin }, // <-- ESTA É A CHAVE
   ].filter((t) => t.mostrar);
 
   return (
@@ -90,6 +93,7 @@ export default function App() {
         {separador === 'orcamentos' && <Orcamentos perfil={utilizador.perfil} />}
         {separador === 'ordens' && <Ordens perfil={utilizador.perfil} />}
         {separador === 'agenda' && <Agendamentos />}
+        {separador === 'admin' && <Admin />} {/* <-- AQUI CARREGA O ECRÃ DE ADMIN */}
       </main>
     </div>
   );

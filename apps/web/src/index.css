@@ -207,3 +207,8 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 }
 .estrela.ativa { color: #E6A817; }
 .avaliacao-autor { margin-bottom: 0; opacity: 0.8; }
+.grelha-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.kpi { text-align: center; }
+.kpi-valor { font-size: 2rem; font-weight: 700; color: var(--destaque); margin: 8px 0; }
+.lista-simples { list-style: none; padding: 0; margin: 0; }
+.lista-simples li { padding: 8px 0; border-bottom: 1px solid #E3EAF0; display: flex; justify-content: space-between; }
