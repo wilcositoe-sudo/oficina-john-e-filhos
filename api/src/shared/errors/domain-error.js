@@ -19,6 +19,8 @@ export const erros = {
     new DomainError('NAO_AUTENTICADO', 'Sessão inválida ou expirada.', 401),
   naoAutorizado: () =>
     new DomainError('NAO_AUTORIZADO', 'Sem permissão para esta operação.', 403),
+  ultimoAdminAtivo: () =>
+    new DomainError('ULTIMO_ADMIN_ATIVO', 'Não é possível desativar o último administrador ativo.', 409),
 
   // --- Contas (RF20) ---
   emailEmUso: () =>
@@ -87,4 +89,8 @@ export const erros = {
     new DomainError('OS_NAO_ELEGIVEL_AVALIACAO', 'Só pode avaliar após a entrega do veículo.', 409, { estadoAtual: estado }),
   avaliacaoExistente: () =>
     new DomainError('AVALIACAO_EXISTENTE', 'Esta ordem de serviço já foi avaliada.', 409),
+
+  // --- Administração ---
+  contaInternaInvalida: (msg) =>
+    new DomainError('CONTA_INTERNA_INVALIDA', msg, 422),
 };

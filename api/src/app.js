@@ -11,22 +11,19 @@ import { createPartsRouter } from './modules/parts/http/parts-routes.js';
 import { createMessagingRouter } from './modules/messaging/http/messaging-routes.js';
 import { createPaymentsRouter } from './modules/payments/http/payments-routes.js';
 import { createRatingsRouter } from './modules/ratings/http/ratings-routes.js';
+import { createAdminRouter } from './modules/admin/http/admin-routes.js';
 import { logger } from './shared/logging/logger.js';
 
 export function createApp() {
   const app = express();
-
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
-
-  // CORS restrito à origem real do frontend (Doc 11 §11.2) — nunca '*'
   app.use(cors({ origin: config.webOrigin }));
 
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
   });
 
-  // API versionada (Doc 10 §10.1)
   app.use('/api/v1/auth', createAuthRouter());
   app.use('/api/v1', createCatalogRouter());
   app.use('/api/v1', createVehicleRouter());
@@ -37,6 +34,7 @@ export function createApp() {
   app.use('/api/v1', createMessagingRouter());
   app.use('/api/v1', createPaymentsRouter());
   app.use('/api/v1', createRatingsRouter());
+  app.use('/api/v1', createAdminRouter());
 
   app.use((req, res) => {
     res.status(404).json({
@@ -44,7 +42,6 @@ export function createApp() {
     });
   });
 
-  // Middleware de erro central — mapeia DomainError; 500 nunca expõe detalhes (Doc 05 §5.9)
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     const status = Number.isInteger(err.status) ? err.status : 500;

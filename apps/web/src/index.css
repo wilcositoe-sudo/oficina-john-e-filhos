@@ -196,3 +196,14 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 .chat-cliente .chat-bolha { background: var(--secundaria); color: var(--branco); border-color: var(--secundaria); }
 .chat-cliente .chat-bolha small { opacity: 0.8; }
 .chat-bolha p { margin: 4px 0 0; }
+.estrelas { color: #E6A817; font-size: 1.2rem; letter-spacing: 2px; }
+.estrelas-input { display: flex; gap: 4px; }
+.estrela {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  cursor: pointer;
+  color: #C9D4DD;
+}
+.estrela.ativa { color: #E6A817; }
+.avaliacao-autor { margin-bottom: 0; opacity: 0.8; }
