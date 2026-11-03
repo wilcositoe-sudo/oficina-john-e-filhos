@@ -33,31 +33,20 @@ export function createAdminRouter() {
   }));
 
   router.post('/admin/utilizadores', ...admin, asyncRoute(async (req, res) => {
-    const resultado = await criarConta({
-      ...(req.body ?? {}),
-      utilizador: req.utilizador,
-    });
+    const resultado = await criarConta({ ...(req.body ?? {}), utilizador: req.utilizador });
     res.status(201).json({ data: resultado });
   }));
 
   router.patch('/admin/utilizadores/:id', ...admin, asyncRoute(async (req, res) => {
     res.json({
-      data: await atualizarConta({
-        id: req.params.id,
-        ...(req.body ?? {}),
-        utilizador: req.utilizador,
-      }),
+      data: await atualizarConta({ id: req.params.id, ...(req.body ?? {}), utilizador: req.utilizador }),
     });
   }));
 
   // --- Dashboard ---
   router.get('/admin/dashboard', ...admin, asyncRoute(async (req, res) => {
     res.json({
-      data: await dashboard({
-        inicio: req.query.inicio,
-        fim: req.query.fim,
-        utilizador: req.utilizador,
-      }),
+      data: await dashboard({ inicio: req.query.inicio, fim: req.query.fim, utilizador: req.utilizador }),
     });
   }));
 
@@ -75,9 +64,7 @@ export function createAdminRouter() {
     }
     const resultado = await avaliacaoRepo.atualizarPublicacao({ id: req.params.id, publicada });
     if (!resultado) {
-      return res.status(404).json({
-        error: { code: 'NAO_ENCONTRADO', message: 'Avaliação não encontrada.' },
-      });
+      return res.status(404).json({ error: { code: 'NAO_ENCONTRADO', message: 'Avaliação não encontrada.' } });
     }
     res.json({ data: resultado });
   }));

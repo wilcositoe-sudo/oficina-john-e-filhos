@@ -8,7 +8,7 @@ import { criarPgVeiculoRepository } from '../../vehicles/adapters/pg-veiculo-rep
 import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
 import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
 
-// === Use-cases EXISTENTES (nomes reais: "Os" minúsculo) ===
+// === Use-cases EXISTENTES ===
 import { criarCriarOS } from '../use-cases/criar-os.js';
 import { criarListarOsStaff } from '../use-cases/listar-os-staff.js';
 import { criarDetalheOs } from '../use-cases/detalhe-os.js';
@@ -32,7 +32,7 @@ import { createRequireAuth, createRequireRole } from '../../auth/http/session-mi
 export function createWorkOrdersRouter() {
   const router = Router();
 
-  // --- Repositórios (instanciados UMA vez) ---
+  // --- Repositórios ---
   const osRepo = criarPgOsRepository();
   const clienteRepo = criarPgClienteRepository();
   const veiculoRepo = criarPgVeiculoRepository();
@@ -48,7 +48,7 @@ export function createWorkOrdersRouter() {
   const cliente = [requireAuth, createRequireRole('CLIENTE')];
   const qualquerAutenticado = [requireAuth];
 
-  // --- Use-cases EXISTENTES (assinaturas corretas conforme findstr) ---
+  // --- Use-cases EXISTENTES ---
   const criarOS = criarCriarOS({ osRepo, utilizadorRepo, clienteRepo, veiculoRepo });
   const listarOsStaff = criarListarOsStaff({ osRepo });
   const detalheOs = criarDetalheOs({ osRepo });
@@ -67,9 +67,10 @@ export function createWorkOrdersRouter() {
   const validarRevisao = criarValidarRevisao({ osRepo });
 
   // ============================================================
-  // ROTAS EXISTENTES (F7/F10)
+  // ⚠️ ORDEM CRÍTICA: ROTAS ESTÁTICAS ANTES DAS DINÂMICAS
   // ============================================================
 
+  // --- 1. Coleções / listas (sem parâmetro :id) ---
   router.post('/ordens', ...staff, asyncRoute(async (req, res) => {
     const resultado = await criarOS({ ...req.body, utilizador: req.utilizador });
     res.status(201).json({ data: resultado });
@@ -79,14 +80,22 @@ export function createWorkOrdersRouter() {
     res.json({ data: await listarOsStaff(req.query ?? {}) });
   }));
 
+  // --- 2. Rotas ESTÁTICAS específicas (DEVEM VIR ANTES de /:id) ---
   router.get('/ordens/meu', ...cliente, asyncRoute(async (req, res) => {
     res.json({ data: await listarMinhasOs({ utilizador: req.utilizador }) });
   }));
 
+  router.get('/ordens/minhas', ...mecanico, asyncRoute(async (req, res) => {
+    const lista = await osRepo.listarPorMecanico(req.utilizador.id);
+    res.json({ data: lista });
+  }));
+
+  // --- 3. Rota DINÂMICA genérica (:id) — SEMPRE POR ÚLTIMO ---
   router.get('/ordens/:id', ...qualquerAutenticado, asyncRoute(async (req, res) => {
     res.json({ data: await detalheOs({ id: req.params.id, utilizador: req.utilizador }) });
   }));
 
+  // --- 4. Sub-rotas com :id (a ordem relativa entre elas não importa, pois todas têm :id) ---
   router.post('/ordens/:id/transicoes', ...staff, asyncRoute(async (req, res) => {
     const resultado = await transitarOs({
       id: req.params.id,
@@ -119,7 +128,7 @@ export function createWorkOrdersRouter() {
     res.json({ data: await listarHistoricoOs({ id: req.params.id }) });
   }));
 
-    router.post('/ordens/:id/entrega', ...qualquerAutenticado, asyncRoute(async (req, res) => {
+  router.post('/ordens/:id/entrega', ...qualquerAutenticado, asyncRoute(async (req, res) => {
     const resultado = await escolherEntrega({
       ordemId: req.params.id,
       utilizador: req.utilizador,
@@ -129,10 +138,9 @@ export function createWorkOrdersRouter() {
   }));
 
   // ============================================================
-  // ROTAS NOVAS (F12) — FLUXO MECÂNICO / FUNCIONÁRIO / CLIENTE
+  // ROTAS NOVAS (F12) — todas usam :id, portanto ficam no bloco dinâmico
   // ============================================================
 
-  // Funcionário/Admin atribui OS ao mecânico
   router.patch('/ordens/:id/atribuir-mecanico', ...staff, asyncRoute(async (req, res) => {
     const { mecanicoId } = req.body ?? {};
     const resultado = await atribuirMecanico({
@@ -143,13 +151,6 @@ export function createWorkOrdersRouter() {
     res.json({ data: resultado });
   }));
 
-  // Mecânico lista as suas OS atribuídas
-  router.get('/ordens/minhas', ...mecanico, asyncRoute(async (req, res) => {
-    const lista = await osRepo.listarPorMecanico(req.utilizador.id);
-    res.json({ data: lista });
-  }));
-
-  // Mecânico submete diagnóstico (checklist + serviços/peças SEM preço)
   router.post('/ordens/:id/diagnostico', ...mecanico, asyncRoute(async (req, res) => {
     const resultado = await submeterDiagnostico({
       ordemId: req.params.id,
@@ -161,7 +162,6 @@ export function createWorkOrdersRouter() {
     res.json({ data: resultado });
   }));
 
-  // Funcionário precifica (atribui preços + taxa diagnóstico)
   router.post('/ordens/:id/precificar', ...staff, asyncRoute(async (req, res) => {
     const resultado = await precificarOS({
       ordemId: req.params.id,
@@ -172,7 +172,6 @@ export function createWorkOrdersRouter() {
     res.json({ data: resultado });
   }));
 
-  // Cliente toma decisão (aprovar / modificar / rejeitar)
   router.post('/ordens/:id/decisao', ...cliente, asyncRoute(async (req, res) => {
     const resultado = await decisaoCliente({
       ordemId: req.params.id,
@@ -183,7 +182,6 @@ export function createWorkOrdersRouter() {
     res.json({ data: resultado });
   }));
 
-  // Funcionário valida cortes do cliente
   router.post('/ordens/:id/validar-revisao', ...staff, asyncRoute(async (req, res) => {
     const resultado = await validarRevisao({
       ordemId: req.params.id,

@@ -58,17 +58,40 @@ export function criarPgOsRepository() {
       return rows[0] ?? null;
     },
 
-    async listarPorMecanico(mecanicoId) {
+      async listarPorMecanico(mecanicoId) {
       const { rows } = await pool.query(
-        `SELECT id, numero_os, cliente_id, veiculo_id, descricao_problema, estado,
-                valor_total, taxa_diagnostico, modalidade_entrega, taxa_entrega,
-                created_at, data_conclusao
-         FROM ordens_servico
-         WHERE mecanico_id = $1::bigint AND estado NOT IN ('ENTREGUE','CANCELADA','REJEITADA')
-         ORDER BY created_at DESC`,
+        `SELECT o.id, o.numero_os, o.cliente_id, o.veiculo_id, o.descricao_problema,
+                o.estado, o.valor_total, o.taxa_diagnostico, o.diagnostico_cobrado,
+                o.modalidade_entrega, o.taxa_entrega, o.mecanico_id,
+                o.data_conclusao, o.created_at,
+                u.id AS utilizador_id
+         FROM ordens_servico o
+         JOIN clientes c ON c.id = o.cliente_id
+         JOIN utilizadores u ON u.id = c.utilizador_id
+         WHERE o.mecanico_id = $1::bigint
+           AND o.estado NOT IN ('ENTREGUE','CANCELADA','REJEITADA')
+         ORDER BY o.created_at DESC`,
         [mecanicoId],
       );
-      return rows.map(mapRow);
+
+      // Mapeamento INLINE — não depende de mapRow
+      return rows.map((r) => ({
+        id: r.id,
+        numeroOS: r.numero_os,
+        clienteId: r.cliente_id,
+        veiculoId: r.veiculo_id,
+        descricaoProblema: r.descricao_problema,
+        estado: r.estado,
+        valorTotal: r.valor_total,
+        taxaDiagnostico: r.taxa_diagnostico ?? '0.00',
+        diagnosticoCobrado: r.diagnostico_cobrado ?? false,
+        modalidadeEntrega: r.modalidade_entrega ?? null,
+        taxaEntrega: r.taxa_entrega ?? '0.00',
+        mecanicoId: r.mecanico_id,
+        dataConclusao: r.data_conclusao,
+        createdAt: r.created_at,
+        utilizadorId: r.utilizador_id,
+      }));
     },
 
     // --- F12: Diagnóstico (Mecânico adiciona linhas SEM preço) ---
