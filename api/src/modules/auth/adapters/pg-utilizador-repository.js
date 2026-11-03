@@ -51,7 +51,7 @@ export function criarPgUtilizadorRepository() {
       return rows[0] ? mapRow(rows[0]) : null;
     },
 
-    // --- RF15: gestão de contas internas ---
+    // --- F11: Gestão de contas internas ---
     async listarInternos() {
       const { rows } = await pool.query(
         `SELECT id, nome, email, telefone, perfil, ativo, created_at
@@ -82,6 +82,29 @@ export function criarPgUtilizadorRepository() {
         [id, nome ?? null, ativo ?? null],
       );
       return rows[0] ? mapRow(rows[0]) : null;
+    },
+
+    // --- F12: Recuperação de senha ---
+    async guardarTokenRecuperacao(id, token, expiraEm) {
+      await pool.query(
+        `UPDATE utilizadores SET reset_token = $2, reset_token_expires_at = $3 WHERE id = $1::bigint`,
+        [id, token, expiraEm],
+      );
+    },
+
+    async procurarPorTokenRecuperacao(token) {
+      const { rows } = await pool.query(
+        `SELECT id, reset_token, reset_token_expires_at FROM utilizadores WHERE reset_token = $1 AND ativo = TRUE`,
+        [token],
+      );
+      return rows[0] ?? null;
+    },
+
+    async atualizarSenhaEInvalidarToken(id, passwordHash) {
+      await pool.query(
+        `UPDATE utilizadores SET password_hash = $2, reset_token = NULL, reset_token_expires_at = NULL, updated_at = now() WHERE id = $1::bigint`,
+        [id, passwordHash],
+      );
     },
   };
 }

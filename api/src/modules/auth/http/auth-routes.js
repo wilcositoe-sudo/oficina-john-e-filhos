@@ -5,6 +5,8 @@ import { criarPgClienteRepository } from '../adapters/pg-cliente-repository.js';
 import { criarPgSessaoRepository } from '../adapters/pg-sessao-repository.js';
 import { criarRegistarCliente } from '../use-cases/registar-cliente.js';
 import { criarLogin } from '../use-cases/login.js';
+import { criarSolicitarRecuperacao } from '../use-cases/solicitar-recuperacao.js';
+import { criarConfirmarRecuperacao } from '../use-cases/confirmar-recuperacao.js';
 import { createRequireAuth } from './session-middleware.js';
 
 function extrairToken(req) {
@@ -21,6 +23,8 @@ export function createAuthRouter() {
 
   const registarCliente = criarRegistarCliente({ utilizadorRepo, clienteRepo });
   const login = criarLogin({ utilizadorRepo, sessaoRepo });
+  const solicitarRecuperacao = criarSolicitarRecuperacao({ utilizadorRepo });
+  const confirmarRecuperacao = criarConfirmarRecuperacao({ utilizadorRepo });
 
   router.post('/register', asyncRoute(async (req, res) => {
     const resultado = await registarCliente(req.body ?? {});
@@ -40,6 +44,17 @@ export function createAuthRouter() {
   router.get('/me', requireAuth, (req, res) => {
     res.json({ data: req.utilizador });
   });
+
+  // --- F12: Recuperação de senha (PÚBLICO - sem requireAuth) ---
+  router.post('/forgot-password', asyncRoute(async (req, res) => {
+    const resultado = await solicitarRecuperacao(req.body ?? {});
+    res.json({ data: resultado });
+  }));
+
+  router.post('/reset-password', asyncRoute(async (req, res) => {
+    const resultado = await confirmarRecuperacao(req.body ?? {});
+    res.json({ data: resultado });
+  }));
 
   return router;
 }

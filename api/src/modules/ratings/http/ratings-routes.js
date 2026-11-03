@@ -14,12 +14,15 @@ export function createRatingsRouter() {
   const avaliacaoRepo = criarPgAvaliacaoRepository();
   const osRepo = criarPgOsRepository();
   const clienteRepo = criarPgClienteRepository();
+  
   const requireAuth = createRequireAuth({
     sessaoRepo: criarPgSessaoRepository(),
     utilizadorRepo: criarPgUtilizadorRepository(),
   });
+  
+  const admin = [requireAuth, createRequireRole('ADMINISTRADOR')];
   const cliente = [requireAuth, createRequireRole('CLIENTE')];
-
+  
   const avaliar = criarAvaliarOs({ avaliacaoRepo, osRepo, clienteRepo });
   const listarPublicas = criarListarAvaliacoesPublicas({ avaliacaoRepo });
 
@@ -29,9 +32,26 @@ export function createRatingsRouter() {
     res.status(201).json({ data: resultado });
   }));
 
-  // RF09 — público: avaliações publicadas (sem dados privados)
+  // RF09 — público: avaliações publicadas
   router.get('/avaliacoes', asyncRoute(async (req, res) => {
     res.json({ data: await listarPublicas() });
+  }));
+
+  // NOVO: F12 — Admin modera avaliações
+  router.get('/admin/avaliacoes', ...admin, asyncRoute(async (req, res) => {
+    res.json({ data: await avaliacaoRepo.listarTodas() });
+  }));
+
+  router.patch('/admin/avaliacoes/:id', ...admin, asyncRoute(async (req, res) => {
+    const { publicada } = req.body ?? {};
+    if (typeof publicada !== 'boolean') {
+      return res.status(422).json({ error: { code: 'VALIDACAO', message: 'Campo "publicada" é obrigatório e deve ser booleano.' } });
+    }
+    const resultado = await avaliacaoRepo.atualizarPublicacao({ id: req.params.id, publicada });
+    if (!resultado) {
+      return res.status(404).json({ error: { code: 'NAO_ENCONTRADO', message: 'Avaliação não encontrada.' } });
+    }
+    res.json({ data: resultado });
   }));
 
   return router;

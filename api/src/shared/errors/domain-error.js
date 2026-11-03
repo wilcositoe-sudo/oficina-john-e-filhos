@@ -34,7 +34,7 @@ export const erros = {
 
   // --- Catálogo (RF01) ---
   servicoNaoEncontrado: () =>
-    new DomainError('SERVICO_NAO_ENCONTRADO', 'Servíço não encontrado.', 404),
+    new DomainError('SERVICO_NAO_ENCONTRADO', 'Serviço não encontrado.', 404),
   servicoInativo: () =>
     new DomainError('SERVICO_INATIVO', 'Este serviço está inativo e não pode ser lançado.', 409),
 
@@ -90,7 +90,7 @@ export const erros = {
   avaliacaoExistente: () =>
     new DomainError('AVALIACAO_EXISTENTE', 'Esta ordem de serviço já foi avaliada.', 409),
 
-  // --- Administração ---
+  // --- Administração (F11) ---
   contaInternaInvalida: (msg) =>
     new DomainError('CONTA_INTERNA_INVALIDA', msg, 422),
 };

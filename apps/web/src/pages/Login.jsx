@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { api, setToken } from '../lib/api.js';
 
-// UI01/RF19: erro genérico (não revela se a conta existe), estados loading/erro.
-export default function Login({ aoEntrar, irParaRegisto }) {
+export default function Login({ aoEntrar, irParaRegisto, irParaLanding, irParaRecuperar }) {
   const [identificador, setIdentificador] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
@@ -32,6 +31,17 @@ export default function Login({ aoEntrar, irParaRegisto }) {
         <h1>Oficina John e Filhos</h1>
         <p className="subtitulo">Gestão de Ordens de Serviço</p>
 
+        {irParaLanding && (
+          <button 
+            type="button" 
+            className="ligacao" 
+            onClick={irParaLanding} 
+            style={{ marginBottom: '16px', display: 'block', width: '100%', textAlign: 'left' }}
+          >
+            ← Voltar à página inicial
+          </button>
+        )}
+
         <label htmlFor="identificador">E-mail ou telefone</label>
         <input
           id="identificador"
@@ -58,7 +68,11 @@ export default function Login({ aoEntrar, irParaRegisto }) {
           {loading ? 'A entrar…' : 'Entrar'}
         </button>
 
-        <button type="button" className="ligacao" onClick={irParaRegisto}>
+        <button type="button" className="ligacao" onClick={irParaRecuperar} style={{ marginTop: '8px', display: 'block', width: '100%', textAlign: 'center' }}>
+          Esqueceu a sua senha?
+        </button>
+
+        <button type="button" className="ligacao" onClick={irParaRegisto} style={{ marginTop: '8px', display: 'block', width: '100%', textAlign: 'center' }}>
           Não tenho conta — criar conta
         </button>
       </form>

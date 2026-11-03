@@ -2,27 +2,28 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
 const fmtMoeda = (v) => `${Number(v ?? 0).toFixed(2)} MZN`;
+const fmtData = (iso) => iso ? new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Maputo' }) : '';
 
 export default function Admin() {
   const [separador, setSeparador] = useState('dashboard');
 
   return (
     <section>
-      <h2>Administração</h2>
-      <nav className="navegacao" style={{ marginBottom: 16, display: 'flex', gap: '8px' }}>
+      <h2>Administração do Sistema</h2>
+      <nav className="navegacao" style={{ marginBottom: 24, display: 'flex', gap: '8px' }}>
         <button 
           className={`aba ${separador === 'dashboard' ? 'ativa' : ''}`} 
           onClick={() => setSeparador('dashboard')}
           style={{ cursor: 'pointer' }}
         >
-          Dashboard
+          📊 Dashboard
         </button>
         <button 
           className={`aba ${separador === 'contas' ? 'ativa' : ''}`} 
           onClick={() => setSeparador('contas')}
           style={{ cursor: 'pointer' }}
         >
-          Contas Internas
+          👥 Contas Internas
         </button>
       </nav>
       
@@ -32,18 +33,24 @@ export default function Admin() {
   );
 }
 
+// ==========================================
+// COMPONENTE: DASHBOARD
+// ==========================================
 function Dashboard() {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
+  const [aCarregar, setACarregar] = useState(true);
 
   useEffect(() => {
     api('GET', '/admin/dashboard')
       .then(setDados)
-      .catch((e) => setErro(e.message));
+      .catch((e) => setErro(e.message))
+      .finally(() => setACarregar(false));
   }, []);
 
-  if (erro) return <p className="erro" role="alert">{erro}</p>;
-  if (!dados) return <p>A carregar dados do dashboard…</p>;
+  if (aCarregar) return <p>A carregar métricas do dashboard…</p>;
+  if (erro) return <p className="erro" role="alert">Erro ao carregar dashboard: {erro}</p>;
+  if (!dados) return <p className="vazio">Sem dados disponíveis para o período.</p>;
 
   return (
     <div>
@@ -54,9 +61,9 @@ function Dashboard() {
           <small>No período selecionado</small>
         </div>
         <div className="cartao kpi">
-          <h3>Faturação</h3>
+          <h3>Faturação Confirmada</h3>
           <p className="kpi-valor">{fmtMoeda(dados.faturacaoTotal)}</p>
-          <small>Pagamentos confirmados</small>
+          <small>Pagamentos recebidos</small>
         </div>
         <div className="cartao kpi">
           <h3>Tempo Médio de Reparação</h3>
@@ -65,38 +72,46 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="cartao" style={{ marginTop: 24 }}>
-        <h3>OS por Estado</h3>
-        {Object.keys(dados.osPorEstado).length === 0 ? (
-          <p className="vazio">Sem dados para o período.</p>
-        ) : (
-          <ul className="lista-simples">
-            {Object.entries(dados.osPorEstado).map(([estado, qtd]) => (
-              <li key={estado}><span>{estado}</span> <strong>{qtd}</strong></li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="cartao" style={{ marginTop: 24 }}>
-        <h3>Serviços Mais Solicitados</h3>
-        {dados.servicosMaisSolicitados.length === 0 ? (
-          <p className="vazio">Sem dados para o período.</p>
-        ) : (
-          <table className="tabela">
-            <thead><tr><th>Serviço</th><th>Quantidade</th></tr></thead>
-            <tbody>
-              {dados.servicosMaisSolicitados.map((s, i) => (
-                <tr key={i}><td>{s.nome}</td><td>{s.quantidade}</td></tr>
+      <div className="grelha-2-colunas" style={{ marginTop: 24 }}>
+        <div className="cartao">
+          <h3>OS por Estado</h3>
+          {Object.keys(dados.osPorEstado).length === 0 ? (
+            <p className="vazio">Sem dados.</p>
+          ) : (
+            <ul className="lista-simples">
+              {Object.entries(dados.osPorEstado).map(([estado, qtd]) => (
+                <li key={estado}>
+                  <span>{estado.replace('_', ' ')}</span> 
+                  <strong>{qtd}</strong>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
+            </ul>
+          )}
+        </div>
+
+        <div className="cartao">
+          <h3>Serviços Mais Solicitados</h3>
+          {dados.servicosMaisSolicitados.length === 0 ? (
+            <p className="vazio">Sem dados.</p>
+          ) : (
+            <table className="tabela">
+              <thead><tr><th>Serviço</th><th>Qtd.</th></tr></thead>
+              <tbody>
+                {dados.servicosMaisSolicitados.map((s, i) => (
+                  <tr key={i}><td>{s.nome}</td><td>{s.quantidade}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+// ==========================================
+// COMPONENTE: CONTAS INTERNAS
+// ==========================================
 function ContasInternas() {
   const [contas, setContas] = useState(null);
   const [erro, setErro] = useState('');
@@ -120,8 +135,7 @@ function ContasInternas() {
 
   async function criar(e) {
     e.preventDefault();
-    setErro('');
-    setMsg('');
+    setErro(''); setMsg('');
     try {
       await api('POST', '/admin/utilizadores', { body: { nome, email, senha, perfil } });
       setNome(''); setEmail(''); setSenha('');
@@ -137,7 +151,7 @@ function ContasInternas() {
       await api('PATCH', `/admin/utilizadores/${id}`, { body: { ativo: !ativoAtual } });
       await carregar();
     } catch (e) {
-      setErro(e.message); // Mostra "Não é possível desativar o último administrador ativo" se aplicável
+      setErro(e.message); // Aqui aparecerá "Não é possível desativar o último administrador ativo" se aplicável
     }
   }
 
@@ -177,7 +191,7 @@ function ContasInternas() {
         <h3>Contas existentes</h3>
         <table className="tabela">
           <thead>
-            <tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Estado</th><th></th></tr>
+            <tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Estado</th><th>Ação</th></tr>
           </thead>
           <tbody>
             {contas.map((c) => (
@@ -185,11 +199,17 @@ function ContasInternas() {
                 <td>{c.nome}</td>
                 <td>{c.email}</td>
                 <td>{c.perfil}</td>
-                <td>{c.ativo ? <span className="badge badge-aprovado">Ativo</span> : <span className="badge badge-rejeitado">Inativo</span>}</td>
+                <td>
+                  {c.ativo ? 
+                    <span className="badge badge-aprovado">Ativo</span> : 
+                    <span className="badge badge-rejeitado">Inativo</span>
+                  }
+                </td>
                 <td>
                   <button 
                     className={`botao ${c.ativo ? 'botao-perigo' : 'botao-secundario'}`}
                     onClick={() => alternarAtivo(c.id, c.ativo)}
+                    style={{ fontSize: '0.85rem', padding: '4px 8px' }}
                   >
                     {c.ativo ? 'Desativar' : 'Ativar'}
                   </button>

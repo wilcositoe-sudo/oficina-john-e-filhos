@@ -5,8 +5,15 @@ export const AvaliacaoRepository = {
   async procurarPorOrdem(ordemId) {
     throw new Error('Porta não implementada: procurarPorOrdem');
   },
-  // RF09: só publicadas; sem dados privados (primeiro nome apenas)
   async listarPublicas() {
     throw new Error('Porta não implementada: listarPublicas');
+  },
+  // NOVO: Lista todas as avaliações (para moderação do Admin)
+  async listarTodas() {
+    throw new Error('Porta não implementada: listarTodas');
+  },
+  // NOVO: Altera o estado de publicação
+  async atualizarPublicacao({ id, publicada }) {
+    throw new Error('Porta não implementada: atualizarPublicacao');
   },
 };
