@@ -48,6 +48,119 @@ const SQL_PROPRIETARIO = `
 
 export function criarPgOsRepository() {
   return {
+        // --- F12: Atribuição ao Mecânico ---
+    async atribuirMecanico({ ordemId, mecanicoId }) {
+      const { rows } = await pool.query(
+        `UPDATE ordens_servico SET mecanico_id = $2, updated_at = now()
+         WHERE id = $1::bigint RETURNING id, numero_os, estado, mecanico_id`,
+        [ordemId, mecanicoId],
+      );
+      return rows[0] ?? null;
+    },
+
+    async listarPorMecanico(mecanicoId) {
+      const { rows } = await pool.query(
+        `SELECT id, numero_os, cliente_id, veiculo_id, descricao_problema, estado,
+                valor_total, taxa_diagnostico, modalidade_entrega, taxa_entrega,
+                created_at, data_conclusao
+         FROM ordens_servico
+         WHERE mecanico_id = $1::bigint AND estado NOT IN ('ENTREGUE','CANCELADA','REJEITADA')
+         ORDER BY created_at DESC`,
+        [mecanicoId],
+      );
+      return rows.map(mapRow);
+    },
+
+    // --- F12: Diagnóstico (Mecânico adiciona linhas SEM preço) ---
+    async lancarServicoSemPreco({ ordemId, servicoId, quantidade, descricaoSnapshot }) {
+      const { rows } = await pool.query(
+        `INSERT INTO servicos_os (ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal, precificado)
+         VALUES ($1::bigint, $2::bigint, $3::text, $4::numeric, 0, 0, FALSE)
+         RETURNING id, ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal, precificado`,
+        [ordemId, servicoId, descricaoSnapshot, quantidade],
+      );
+      return rows[0];
+    },
+
+    async lancarPecaSemPreco({ ordemId, pecaId, quantidade }) {
+      const { rows } = await pool.query(
+        `INSERT INTO pecas_os (ordem_id, peca_id, quantidade, preco_unitario, subtotal, precificado)
+         VALUES ($1::bigint, $2::bigint, $3::integer, 0, 0, FALSE)
+         RETURNING id, ordem_id, peca_id, quantidade, preco_unitario, subtotal, precificado`,
+        [ordemId, pecaId, quantidade],
+      );
+      return rows[0];
+    },
+
+    // --- F12: Precificação (Funcionário atribui preços) ---
+    async precificarLinhaServico({ linhaId, precoUnitario }) {
+      const subtotal = (Number(precoUnitario) * 1).toFixed(2);
+      const { rows } = await pool.query(
+        `UPDATE servicos_os SET preco_unitario = $2::numeric, subtotal = $2::numeric * quantidade, precificado = TRUE
+         WHERE id = $1::bigint RETURNING id, preco_unitario, subtotal, precificado`,
+        [linhaId, precoUnitario],
+      );
+      return rows[0] ?? null;
+    },
+
+    async precificarLinhaPeca({ linhaId, precoUnitario }) {
+      const { rows } = await pool.query(
+        `UPDATE pecas_os SET preco_unitario = $2::numeric, subtotal = $2::numeric * quantidade, precificado = TRUE
+         WHERE id = $1::bigint RETURNING id, preco_unitario, subtotal, precificado`,
+        [linhaId, precoUnitario],
+      );
+      return rows[0] ?? null;
+    },
+
+    async definirTaxaDiagnostico({ ordemId, taxa }) {
+      await pool.query(
+        `UPDATE ordens_servico SET taxa_diagnostico = $2::numeric, updated_at = now() WHERE id = $1::bigint`,
+        [ordemId, taxa],
+      );
+    },
+
+    // --- F12: Decisão do Cliente ---
+    async rejeitarComCobrancaDiagnostico({ ordemId }) {
+      const { rows } = await pool.query(
+        `UPDATE ordens_servico
+         SET estado = 'REJEITADA',
+             valor_total = taxa_diagnostico,
+             diagnostico_cobrado = TRUE,
+             data_conclusao = now(),
+             updated_at = now()
+         WHERE id = $1::bigint AND diagnostico_cobrado = FALSE
+         RETURNING id, numero_os, estado, valor_total, taxa_diagnostico`,
+        [ordemId],
+      );
+      return rows[0] ?? null;
+    },
+
+    async removerLinhaServico({ linhaId }) {
+      await pool.query(`DELETE FROM servicos_os WHERE id = $1::bigint AND precificado = FALSE`, [linhaId]);
+    },
+
+    async removerLinhaPeca({ linhaId }) {
+      await pool.query(`DELETE FROM pecas_os WHERE id = $1::bigint AND precificado = FALSE`, [linhaId]);
+    },
+
+    // --- F12: Recalcular total (após cortes ou aprovação) ---
+    async recalcularTotal(ordemId) {
+      const { rows } = await pool.query(
+        `SELECT
+           COALESCE(SUM(s.subtotal), 0) + COALESCE(SUM(p.subtotal), 0) + COALESCE(o.taxa_entrega, 0) AS total
+         FROM ordens_servico o
+         LEFT JOIN servicos_os s ON s.ordem_id = o.id
+         LEFT JOIN pecas_os p ON p.ordem_id = o.id
+         WHERE o.id = $1::bigint`,
+        [ordemId],
+      );
+      const total = rows[0]?.total ?? '0.00';
+      await pool.query(
+        `UPDATE ordens_servico SET valor_total = $2::numeric, updated_at = now() WHERE id = $1::bigint`,
+        [ordemId, total],
+      );
+      return total;
+    },
     async criar({ clienteId, veiculoId, funcionarioId, descricaoProblema, orcamentoId }) {
       const client = await pool.connect();
       try {

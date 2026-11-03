@@ -26,7 +26,11 @@ export default function Admin() {
           👥 Contas Internas
         </button>
       </nav>
-      
+      <select value={perfil} onChange={(e) => setPerfil(e.target.value)}>
+  <option value="FUNCIONARIO">Funcionário (Atendente)</option>
+  <option value="MECANICO">Mecânico</option>
+  <option value="ADMINISTRADOR">Administrador</option>
+</select>
       {separador === 'dashboard' && <Dashboard />}
       {separador === 'contas' && <ContasInternas />}
     </section>
