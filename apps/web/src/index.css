@@ -397,3 +397,37 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 }
 .badge-aprovado { background: #E2F0D9; color: #2E7D32; }
 .badge-rejeitado { background: #FCE4D6; color: #B03A2E; }
+
+/* ==================== AVALIAÇÕES ==================== */
+.grelha-avaliacoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.cartao-avaliacao {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #E3EAF0;
+  text-align: left;
+}
+.estrelas { color: #E6A817; font-size: 1.2rem; letter-spacing: 2px; }
+.avaliacao-comentario {
+  margin: 12px 0;
+  line-height: 1.5;
+  color: #26323A;
+  font-style: italic;
+}
+.avaliacao-autor { margin-bottom: 0; opacity: 0.7; text-align: right; }
+
+.estrelas-input { display: flex; gap: 4px; margin-bottom: 16px; }
+.estrela {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #C9D4DD;
+  transition: color 0.2s;
+}
+.estrela.ativa { color: #E6A817; }
+.estrela:hover { color: #E6A817; }

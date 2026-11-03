@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
 const fmtData = (iso) =>
-  new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Maputo' });
+  iso ? new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Maputo' }) : '';
 
 function Estrelas({ n }) {
-  return <span className="estrelas" aria-label={`${n} de 5 estrelas`}>{'★'.repeat(n)}{'☆'.repeat(5 - n)}</span>;
+  return (
+    <span className="estrelas" aria-label={`${n} de 5 estrelas`}>
+      {'★'.repeat(n)}{'☆'.repeat(5 - n)}
+    </span>
+  );
 }
 
-// RF09 — avaliações públicas (sem dados privados dos autores)
+// RF09 — Avaliações públicas (sem dados privados dos autores)
 export default function Avaliacoes() {
   const [lista, setLista] = useState(null);
   const [erro, setErro] = useState('');
@@ -20,21 +24,21 @@ export default function Avaliacoes() {
   }, []);
 
   if (erro) return <p className="erro" role="alert">{erro}</p>;
-  if (lista === null) return <p>A carregar…</p>;
+  if (lista === null) return <p className="centro">A carregar avaliações…</p>;
 
   return (
     <section>
-      <h2>Avaliações dos clientes</h2>
+      <h2>Avaliações dos nossos clientes</h2>
       {lista.length === 0 ? (
-        <p className="vazio">Ainda não há avaliações publicadas.</p>
+        <p className="vazio">Ainda não há avaliações publicadas. Seja o primeiro!</p>
       ) : (
-        <div className="grelha">
+        <div className="grelha-avaliacoes">
           {lista.map((a) => (
-            <article className="cartao" key={a.id}>
+            <article className="cartao cartao-avaliacao" key={a.id}>
               <Estrelas n={a.classificacao} />
-              {a.comentario && <p>{a.comentario}</p>}
+              {a.comentario && <p className="avaliacao-comentario">"{a.comentario}"</p>}
               <p className="avaliacao-autor">
-                <small>{a.clienteNome} · {fmtData(a.createdAt)}</small>
+                <small>— {a.clienteNome} · {fmtData(a.createdAt)}</small>
               </p>
             </article>
           ))}

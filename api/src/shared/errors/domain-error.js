@@ -91,6 +91,8 @@ export const erros = {
     new DomainError('AVALIACAO_EXISTENTE', 'Esta ordem de serviço já foi avaliada.', 409),
 
   // --- Administração (F11) ---
+    // --- Administração e Novo Fluxo ---
   contaInternaInvalida: (msg) =>
     new DomainError('CONTA_INTERNA_INVALIDA', msg, 422),
-};
+  taxaDiagnosticoInvalida: () =>
+    new DomainError('TAXA_DIAGNOSTICO_INVALIDA', 'A taxa de diagnóstico deve ser um valor positivo.', 422),}

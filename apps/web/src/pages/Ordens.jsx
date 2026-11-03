@@ -20,7 +20,7 @@ const ACOES_POR_ESTADO = {
   EM_REPARACAO: ['aguardar_pecas', 'concluir', 'cancelar'],
   AGUARDANDO_PECAS: ['iniciar_reparacao', 'cancelar'],
   CONCLUIDA: [],
-  PAGA: ['entregar'],
+  PAGA: ['entregar'], // NOVO: Staff pode confirmar entrega
   ENTREGUE: [],
   CANCELADA: [],
 };
@@ -34,22 +34,15 @@ const ROTULO_ACAO = {
   aguardar_pecas: 'Aguardar peças',
   concluir: 'Concluir',
   cancelar: 'Cancelar',
-  entregar: 'Confirmar entrega',
+  entregar: 'Confirmar entrega', // NOVO
 };
 
 const ROTULO_METODO = { PRESENCIAL: 'Presencial', CARTAO: 'Cartão', MOBILE_MONEY: 'Mobile Money' };
-const ROTULO_PAG_ESTADO = {
-  PENDENTE: 'A aguardar confirmação',
-  CONFIRMADO: 'Pago',
-  RECUSADO: 'Recusado',
-  CANCELADO: 'Cancelado',
-};
-const ROTULO_MODALIDADE = { LEVANTAMENTO: 'Levantamento na oficina', DOMICILIO: 'Entrega ao domicílio (+500.00 MZN)' };
+const ROTULO_PAG_ESTADO = { PENDENTE: 'A aguardar', CONFIRMADO: 'Pago', RECUSADO: 'Recusado', CANCELADO: 'Cancelado' };
+const ROTULO_MODALIDADE = { LEVANTAMENTO: 'Levantamento na oficina (Grátis)', DOMICILIO: 'Entrega ao domicílio (+500.00 MZN)' };
 
-const fmtData = (iso) =>
-  iso ? new Date(iso).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo' }) : '—';
-const fmtHora = (iso) =>
-  new Date(iso).toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit' });
+const fmtData = (iso) => (iso ? new Date(iso).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo' }) : '—');
+const fmtHora = (iso) => new Date(iso).toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit' });
 const fmtMoeda = (v) => `${Number(v ?? 0).toFixed(2)} MZN`;
 const novaChave = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
@@ -83,7 +76,7 @@ function VistaCliente() {
     }
   }
 
-  if (lista === null) return <p>A carregar…</p>;
+  if (lista === null) return <p className="centro">A carregar…</p>;
 
   return (
     <section>
@@ -159,33 +152,25 @@ function VistaStaff() {
   }
 
   async function carregarVeiculosDoCliente() {
-    setErro('');
-    setVeiculoId('');
+    setErro(''); setVeiculoId('');
     try {
       const vs = await api('GET', `/clientes/${encodeURIComponent(emailCliente.trim())}/veiculos`);
       setVeiculosCliente(vs);
       if (vs.length > 0) setVeiculoId(vs[0].id);
     } catch (err) {
-      setErro(err.message);
-      setVeiculosCliente([]);
+      setErro(err.message); setVeiculosCliente([]);
     }
   }
 
   async function criarOs(e) {
-    e.preventDefault();
-    setErro('');
-    setMsg('');
+    e.preventDefault(); setErro(''); setMsg('');
     try {
       const criada = await api('POST', '/ordens', {
         body: { emailCliente: emailCliente.trim(), veiculoId: Number(veiculoId), descricaoProblema: descricao },
       });
-      setDescricao('');
-      setMsg(`OS ${criada.numeroOS} criada.`);
-      await carregar();
-      await abrir(criada.id);
-    } catch (err) {
-      setErro(err.message);
-    }
+      setDescricao(''); setMsg(`OS ${criada.numeroOS} criada.`);
+      await carregar(); await abrir(criada.id);
+    } catch (err) { setErro(err.message); }
   }
 
   async function executarAcao(acao) {
@@ -194,11 +179,8 @@ function VistaStaff() {
       await api('POST', `/ordens/${detalhe.os.id}/transicoes`, {
         body: { acao, motivo: acao === 'cancelar' ? 'Cancelado pela oficina' : undefined },
       });
-      await abrir(detalhe.os.id);
-      await carregar();
-    } catch (err) {
-      setErro(err.message);
-    }
+      await abrir(detalhe.os.id); await carregar();
+    } catch (err) { setErro(err.message); }
   }
 
   async function lancarServico() {
@@ -207,15 +189,11 @@ function VistaStaff() {
       await api('POST', `/ordens/${detalhe.os.id}/servicos`, {
         body: { servicoId: Number(servicoId), quantidade: Number(quantidade) },
       });
-      await abrir(detalhe.os.id);
-      await carregar();
-    } catch (err) {
-      setErro(err.message);
-    }
+      await abrir(detalhe.os.id); await carregar();
+    } catch (err) { setErro(err.message); }
   }
 
-  if (lista === null) return <p>A carregar…</p>;
-
+  if (lista === null) return <p className="centro">A carregar…</p>;
   const acoesDisponiveis = detalhe ? (ACOES_POR_ESTADO[detalhe.os.estado] ?? []) : [];
 
   return (
@@ -231,15 +209,12 @@ function VistaStaff() {
           <>
             <label htmlFor="veiculoOs">Veículo do cliente</label>
             <select id="veiculoOs" value={veiculoId} onChange={(e) => setVeiculoId(e.target.value)} required>
-              {veiculosCliente.map((v) => (
-                <option key={v.id} value={v.id}>{v.matricula} · {v.marca} {v.modelo}</option>
-              ))}
+              {veiculosCliente.map((v) => (<option key={v.id} value={v.id}>{v.matricula} · {v.marca} {v.modelo}</option>))}
             </select>
           </>
         )}
         <label htmlFor="descricaoOs">Descrição do problema (mín. 10)</label>
-        <textarea id="descricaoOs" rows="2" value={descricao} minLength={10}
-          onChange={(e) => setDescricao(e.target.value)} required />
+        <textarea id="descricaoOs" rows="2" value={descricao} minLength={10} onChange={(e) => setDescricao(e.target.value)} required />
         {erro && <p className="erro" role="alert">{erro}</p>}
         {msg && <p className="info">{msg}</p>}
         <button className="botao" type="submit" disabled={!veiculoId}>Criar OS</button>
@@ -247,9 +222,7 @@ function VistaStaff() {
 
       <h2>Todas as ordens de serviço</h2>
       <table className="tabela">
-        <thead>
-          <tr><th>Número</th><th>Estado</th><th>Total</th><th>Criada em</th><th></th></tr>
-        </thead>
+        <thead><tr><th>Número</th><th>Estado</th><th>Total</th><th>Criada em</th><th></th></tr></thead>
         <tbody>
           {lista.map((o) => (
             <tr key={o.id}>
@@ -270,9 +243,7 @@ function VistaStaff() {
             <div className="cartao" style={{ marginTop: 16 }}>
               <h3>Transições de estado</h3>
               {acoesDisponiveis.map((a) => (
-                <button key={a} className={a === 'cancelar' ? 'botao botao-perigo' : 'botao'}
-                  style={{ marginRight: 8, marginTop: 4 }}
-                  onClick={() => executarAcao(a)}>
+                <button key={a} className={a === 'cancelar' ? 'botao botao-perigo' : 'botao'} style={{ marginRight: 8, marginTop: 4 }} onClick={() => executarAcao(a)}>
                   {ROTULO_ACAO[a]}
                 </button>
               ))}
@@ -284,19 +255,14 @@ function VistaStaff() {
               <div className="linha-row">
                 <select value={servicoId} onChange={(e) => setServicoId(e.target.value)}>
                   <option value="">— escolher serviço —</option>
-                  {catalogo.map((s) => (
-                    <option key={s.id} value={s.id}>{s.nome} ({fmtMoeda(s.precoBase)})</option>
-                  ))}
+                  {catalogo.map((s) => (<option key={s.id} value={s.id}>{s.nome} ({fmtMoeda(s.precoBase)})</option>))}
                 </select>
-                <input type="number" min="1" className="input-pequeno" value={quantidade}
-                  onChange={(e) => setQuantidade(e.target.value)} />
+                <input type="number" min="1" className="input-pequeno" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
                 <button className="botao" onClick={lancarServico} disabled={!servicoId}>Lançar</button>
               </div>
             </div>
           )}
-          {ESTADOS_EDITAVEIS.includes(detalhe.os.estado) && (
-            <EntregaOS os={detalhe.os} aoMudar={() => abrir(detalhe.os.id)} />
-          )}
+          {ESTADOS_EDITAVEIS.includes(detalhe.os.estado) && <EntregaOS os={detalhe.os} aoMudar={() => abrir(detalhe.os.id)} />}
           <PagamentosOS os={detalhe.os} isStaff={true} aoMudar={() => { abrir(detalhe.os.id); carregar(); }} />
           <ChatOrdem ordemId={detalhe.os.id} />
         </>
@@ -318,32 +284,22 @@ function PainelDetalhe({ detalhe, mostrarAcoes }) {
       <p>{os.descricaoProblema}</p>
       {os.modalidadeEntrega && (
         <p><small>Entrega: {ROTULO_MODALIDADE[os.modalidadeEntrega] ?? os.modalidadeEntrega}
-          {Number(os.taxaEntrega) > 0 && ` (${fmtMoeda(os.taxaEntrega)})`}</small></p>
+        {Number(os.taxaEntrega) > 0 && ` (${fmtMoeda(os.taxaEntrega)})`}</small></p>
       )}
       {os.dataConclusao && <p><small>Concluída em {fmtData(os.dataConclusao)}</small></p>}
-
       {(linhas.servicos.length > 0 || linhas.pecas.length > 0) && (
         <table className="tabela" style={{ marginTop: 8 }}>
-          <thead>
-            <tr><th>Tipo</th><th>Descrição</th><th>Qtd.</th><th>Preço un.</th><th>Subtotal</th></tr>
-          </thead>
+          <thead><tr><th>Tipo</th><th>Descrição</th><th>Qtd.</th><th>Preço un.</th><th>Subtotal</th></tr></thead>
           <tbody>
             {linhas.servicos.map((l) => (
-              <tr key={`s${l.id}`}>
-                <td>Serviço</td><td>{l.descricao_snapshot}</td><td>{l.quantidade}</td>
-                <td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td>
-              </tr>
+              <tr key={`s${l.id}`}><td>Serviço</td><td>{l.descricao_snapshot}</td><td>{l.quantidade}</td><td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td></tr>
             ))}
             {linhas.pecas.map((l) => (
-              <tr key={`p${l.id}`}>
-                <td>Peça</td><td>#{l.peca_id}</td><td>{l.quantidade}</td>
-                <td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td>
-              </tr>
+              <tr key={`p${l.id}`}><td>Peça</td><td>#{l.peca_id}</td><td>{l.quantidade}</td><td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td></tr>
             ))}
           </tbody>
         </table>
       )}
-
       <h4 style={{ marginTop: 16 }}>Histórico</h4>
       <ul className="historico">
         {historico.map((h) => (
@@ -366,15 +322,12 @@ function EntregaOS({ os, aoMudar }) {
   const [info, setInfo] = useState('');
 
   async function guardar() {
-    setErro('');
-    setInfo('');
+    setErro(''); setInfo('');
     try {
       await api('POST', `/ordens/${os.id}/entrega`, { body: { modalidade } });
       setInfo('Modalidade de entrega guardada. O total foi atualizado.');
       aoMudar();
-    } catch (err) {
-      setErro(err.message);
-    }
+    } catch (err) { setErro(err.message); }
   }
 
   return (
@@ -382,14 +335,14 @@ function EntregaOS({ os, aoMudar }) {
       <h3>Modalidade de entrega</h3>
       <div className="linha-row">
         <select value={modalidade} onChange={(e) => setModalidade(e.target.value)}>
-          <option value="LEVANTAMENTO">Levantamento na oficina (grátis)</option>
+          <option value="LEVANTAMENTO">Levantamento na oficina (Grátis)</option>
           <option value="DOMICILIO">Entrega ao domicílio (+500.00 MZN)</option>
         </select>
         <button className="botao botao-secundario" onClick={guardar}>Guardar</button>
       </div>
       {os.modalidadeEntrega && (
         <p><small>Atual: {ROTULO_MODALIDADE[os.modalidadeEntrega]}
-          {Number(os.taxaEntrega) > 0 && ` — ${fmtMoeda(os.taxaEntrega)}`}</small></p>
+        {Number(os.taxaEntrega) > 0 && ` — ${fmtMoeda(os.taxaEntrega)}`}</small></p>
       )}
       {info && <p className="info">{info}</p>}
       {erro && <p className="erro" role="alert">{erro}</p>}
@@ -406,107 +359,72 @@ function PagamentosOS({ os, isStaff, aoMudar }) {
   const [info, setInfo] = useState('');
   const [aProcessar, setAProcessar] = useState(false);
 
-  async function carregar() {
-    setPagamentos(await api('GET', `/ordens/${os.id}/pagamentos`));
-  }
+  async function carregar() { setPagamentos(await api('GET', `/ordens/${os.id}/pagamentos`)); }
   useEffect(() => { carregar().catch(() => {}); }, [os.id]);
 
   const elegivel = os.estado === 'CONCLUIDA';
   const jaPaga = os.estado === 'PAGA' || os.estado === 'ENTREGUE';
 
   async function pagarDigital() {
-    setErro('');
-    setInfo('');
-    setAProcessar(true);
+    setErro(''); setInfo(''); setAProcessar(true);
     try {
-      const p = await api('POST', `/ordens/${os.id}/pagamentos`, {
-        body: { metodo: 'MOBILE_MONEY', idempotencyKey: novaChave() },
-      });
-      setInfo(`Pagamento ${p.referenciaInterna} iniciado. A aguardar confirmação do fornecedor…`);
+      const p = await api('POST', `/ordens/${os.id}/pagamentos`, { body: { metodo: 'MOBILE_MONEY', idempotencyKey: novaChave() } });
+      setInfo(`Pagamento ${p.referenciaInterna} iniciado. A aguardar confirmação…`);
       await carregar();
-    } catch (err) {
-      setErro(err.message);
-    } finally {
-      setAProcessar(false);
-    }
+    } catch (err) { setErro(err.message); } finally { setAProcessar(false); }
   }
 
-  // APENAS DEV: simula o callback do fornecedor fake (DEC-D18). Remover quando houver fornecedor real.
   async function simularWebhook(pagamento, resultado) {
     setErro('');
     try {
       const r = await fetch(`${import.meta.env.VITE_API_BASE_URL}/webhooks/pagamentos/fake`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referenciaInterna: pagamento.referenciaInterna, resultado, idEvento: novaChave() }),
       });
       const json = await r.json();
       setInfo(json.data.duplicado ? 'Evento duplicado ignorado.' : `Resultado: ${json.data.estado ?? 'sem efeito'}`);
-      await carregar();
-      aoMudar();
-    } catch {
-      setErro('Falha na simulação do webhook.');
-    }
+      await carregar(); aoMudar();
+    } catch { setErro('Falha na simulação do webhook.'); }
   }
 
   async function registarPresencial() {
-    setErro('');
-    setInfo('');
+    setErro(''); setInfo('');
     try {
-      await api('POST', `/ordens/${os.id}/pagamentos`, {
-        body: { metodo: 'PRESENCIAL', valor: valorPresencial, idempotencyKey: novaChave() },
-      });
-      setValorPresencial('');
-      setInfo('Pagamento presencial registado com recibo emitido.');
-      await carregar();
-      aoMudar();
-    } catch (err) {
-      setErro(err.message);
-    }
+      await api('POST', `/ordens/${os.id}/pagamentos`, { body: { metodo: 'PRESENCIAL', valor: valorPresencial, idempotencyKey: novaChave() } });
+      setValorPresencial(''); setInfo('Pagamento presencial registado com recibo emitido.');
+      await carregar(); aoMudar();
+    } catch (err) { setErro(err.message); }
   }
 
   async function verRecibo(pagamentoId) {
     setErro('');
-    try {
-      setRecibo(await api('GET', `/pagamentos/${pagamentoId}/recibo`));
-    } catch (err) {
-      setRecibo(null);
-      setErro(err.message);
-    }
+    try { setRecibo(await api('GET', `/pagamentos/${pagamentoId}/recibo`)); } 
+    catch (err) { setRecibo(null); setErro(err.message); }
   }
 
   return (
     <div className="cartao" style={{ marginTop: 16 }}>
       <h3>Pagamentos</h3>
-
       {elegivel && !jaPaga && (
         <>
           {!isStaff && (
             <div className="linha-row" style={{ marginBottom: 12 }}>
               <span>Total a pagar: <strong>{fmtMoeda(os.valorTotal)}</strong></span>
-              <button className="botao" onClick={pagarDigital} disabled={aProcessar}>
-                {aProcessar ? 'A processar…' : 'Pagar com Mobile Money'}
-              </button>
+              <button className="botao" onClick={pagarDigital} disabled={aProcessar}>{aProcessar ? 'A processar…' : 'Pagar com Mobile Money'}</button>
             </div>
           )}
           {isStaff && (
             <div className="linha-row" style={{ marginBottom: 12 }}>
-              <input type="number" min="0" step="0.01" placeholder={`Valor recebido (${os.valorTotal})`}
-                value={valorPresencial} onChange={(e) => setValorPresencial(e.target.value)} />
-              <button className="botao" onClick={registarPresencial} disabled={!valorPresencial}>
-                Registar pagamento presencial
-              </button>
+              <input type="number" min="0" step="0.01" placeholder={`Valor recebido (${os.valorTotal})`} value={valorPresencial} onChange={(e) => setValorPresencial(e.target.value)} />
+              <button className="botao" onClick={registarPresencial} disabled={!valorPresencial}>Registar pagamento presencial</button>
             </div>
           )}
         </>
       )}
       {jaPaga && <p className="info">OS liquidada.</p>}
-
       {pagamentos.length > 0 && (
         <table className="tabela">
-          <thead>
-            <tr><th>Referência</th><th>Método</th><th>Valor</th><th>Estado</th><th></th></tr>
-          </thead>
+          <thead><tr><th>Referência</th><th>Método</th><th>Valor</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {pagamentos.map((p) => (
               <tr key={p.id}>
@@ -515,9 +433,7 @@ function PagamentosOS({ os, isStaff, aoMudar }) {
                 <td>{fmtMoeda(p.valor)}</td>
                 <td>{ROTULO_PAG_ESTADO[p.estado] ?? p.estado}</td>
                 <td>
-                  {p.estado === 'CONFIRMADO' && (
-                    <button className="botao botao-secundario" onClick={() => verRecibo(p.id)}>Recibo</button>
-                  )}
+                  {p.estado === 'CONFIRMADO' && <button className="botao botao-secundario" onClick={() => verRecibo(p.id)}>Recibo</button>}
                   {p.estado === 'PENDENTE' && (
                     <>
                       <button className="botao botao-secundario" onClick={() => simularWebhook(p, 'sucesso')}>✓ simular ok</button>{' '}
@@ -530,36 +446,19 @@ function PagamentosOS({ os, isStaff, aoMudar }) {
           </tbody>
         </table>
       )}
-
       {info && <p className="info">{info}</p>}
       {erro && <p className="erro" role="alert">{erro}</p>}
-
       {recibo && (
         <div className="cartao recibo" style={{ marginTop: 12 }}>
-          <div className="orcamento-cabecalho">
-            <strong>Recibo {recibo.numero}</strong>
-            <span className="orcamento-total">{fmtMoeda(recibo.snapshot.valor)}</span>
-          </div>
+          <div className="orcamento-cabecalho"><strong>Recibo {recibo.numero}</strong><span className="orcamento-total">{fmtMoeda(recibo.snapshot.valor)}</span></div>
           <p><small>Emitido em {fmtData(recibo.emitidoAt)} · OS {recibo.snapshot.numeroOS} · {ROTULO_METODO[recibo.snapshot.metodo]}</small></p>
           <p>Referência do pagamento: <small>{recibo.snapshot.referenciaPagamento}</small></p>
           {(recibo.snapshot.linhas?.servicos?.length > 0 || recibo.snapshot.linhas?.pecas?.length > 0) && (
             <table className="tabela" style={{ marginTop: 8 }}>
-              <thead>
-                <tr><th>Descrição</th><th>Qtd.</th><th>Preço un.</th><th>Subtotal</th></tr>
-              </thead>
+              <thead><tr><th>Descrição</th><th>Qtd.</th><th>Preço un.</th><th>Subtotal</th></tr></thead>
               <tbody>
-                {recibo.snapshot.linhas.servicos.map((l) => (
-                  <tr key={`rs${l.id}`}>
-                    <td>{l.descricao_snapshot}</td><td>{l.quantidade}</td>
-                    <td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td>
-                  </tr>
-                ))}
-                {recibo.snapshot.linhas.pecas.map((l) => (
-                  <tr key={`rp${l.id}`}>
-                    <td>Peça #{l.peca_id}</td><td>{l.quantidade}</td>
-                    <td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td>
-                  </tr>
-                ))}
+                {recibo.snapshot.linhas.servicos.map((l) => (<tr key={`rs${l.id}`}><td>{l.descricao_snapshot}</td><td>{l.quantidade}</td><td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td></tr>))}
+                {recibo.snapshot.linhas.pecas.map((l) => (<tr key={`rp${l.id}`}><td>Peça #{l.peca_id}</td><td>{l.quantidade}</td><td>{fmtMoeda(l.preco_unitario)}</td><td>{fmtMoeda(l.subtotal)}</td></tr>))}
               </tbody>
             </table>
           )}
@@ -584,7 +483,7 @@ function AvaliarOS({ os }) {
       await api('POST', `/ordens/${os.id}/avaliacoes`, { body: { classificacao: nota, comentario } });
       setEstado('ok');
     } catch (err) {
-      if (err.code === 'AVALIACAO_EXISTENTE') setEstado('ja-avaliada');
+      if (err.message.includes('AVALIACAO_EXISTENTE') || err.code === 'AVALIACAO_EXISTENTE') setEstado('ja-avaliada');
       else setErro(err.message);
     }
   }
@@ -598,17 +497,13 @@ function AvaliarOS({ os }) {
       <form className="form-servico" onSubmit={submeter}>
         <div className="estrelas-input" role="radiogroup" aria-label="Classificação de 1 a 5 estrelas">
           {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button"
-              className={`estrela ${n <= nota ? 'ativa' : ''}`}
-              onClick={() => setNota(n)}
-              aria-label={`${n} estrelas`}>
+            <button key={n} type="button" className={`estrela ${n <= nota ? 'ativa' : ''}`} onClick={() => setNota(n)} aria-label={`${n} estrelas`}>
               {n <= nota ? '★' : '☆'}
             </button>
           ))}
         </div>
         <label htmlFor="comentario">Comentário (opcional)</label>
-        <textarea id="comentario" rows="3" maxLength={1000} value={comentario}
-          onChange={(e) => setComentario(e.target.value)} />
+        <textarea id="comentario" rows="3" maxLength={1000} value={comentario} onChange={(e) => setComentario(e.target.value)} />
         {erro && <p className="erro" role="alert">{erro}</p>}
         <button className="botao" type="submit">Enviar avaliação</button>
       </form>
@@ -624,26 +519,14 @@ function ChatOrdem({ ordemId }) {
   const containerRef = useRef(null);
 
   async function carregar() {
-    try {
-      setMensagens(await api('GET', `/ordens/${ordemId}/mensagens`));
-    } catch {
-      /* mantém mensagens em memória se a rede falhar */
-    }
+    try { setMensagens(await api('GET', `/ordens/${ordemId}/mensagens`)); } catch {}
   }
-
-  useEffect(() => {
-    carregar();
-    const timer = setInterval(carregar, 5000);
-    return () => clearInterval(timer);
-  }, [ordemId]);
-
+  useEffect(() => { carregar(); const timer = setInterval(carregar, 5000); return () => clearInterval(timer); }, [ordemId]);
   useEffect(() => {
     const caixa = containerRef.current;
     if (!caixa) return;
     const distanciaDoFim = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight;
-    if (distanciaDoFim < 80) {
-      caixa.scrollTop = caixa.scrollHeight;
-    }
+    if (distanciaDoFim < 80) caixa.scrollTop = caixa.scrollHeight;
   }, [mensagens]);
 
   async function enviar(e) {
@@ -652,11 +535,8 @@ function ChatOrdem({ ordemId }) {
     setErro('');
     try {
       await api('POST', `/ordens/${ordemId}/mensagens`, { body: { conteudo: texto } });
-      setTexto('');
-      await carregar();
-    } catch (err) {
-      setErro(err.message);
-    }
+      setTexto(''); await carregar();
+    } catch (err) { setErro(err.message); }
   }
 
   return (
