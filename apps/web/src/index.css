@@ -431,3 +431,17 @@ select:focus, textarea:focus { outline: 2px solid var(--destaque); border-color:
 }
 .estrela.ativa { color: #E6A817; }
 .estrela:hover { color: #E6A817; }
+
+/* ==================== PAINEL MECÂNICO ==================== */
+fieldset {
+  margin-bottom: 16px;
+}
+fieldset legend {
+  font-size: 1rem;
+  padding: 0 8px;
+  color: #17365D;
+}
+fieldset small {
+  color: #5a6872;
+  font-weight: 400;
+}

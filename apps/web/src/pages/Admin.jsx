@@ -11,34 +11,38 @@ export default function Admin() {
     <section>
       <h2>Administração do Sistema</h2>
       <nav className="navegacao" style={{ marginBottom: 24, display: 'flex', gap: '8px' }}>
-        <button 
-          className={`aba ${separador === 'dashboard' ? 'ativa' : ''}`} 
+        <button
+          className={`aba ${separador === 'dashboard' ? 'ativa' : ''}`}
           onClick={() => setSeparador('dashboard')}
           style={{ cursor: 'pointer' }}
         >
           📊 Dashboard
         </button>
-        <button 
-          className={`aba ${separador === 'contas' ? 'ativa' : ''}`} 
+        <button
+          className={`aba ${separador === 'contas' ? 'ativa' : ''}`}
           onClick={() => setSeparador('contas')}
           style={{ cursor: 'pointer' }}
         >
           👥 Contas Internas
         </button>
+        <button
+          className={`aba ${separador === 'avaliacoes' ? 'ativa' : ''}`}
+          onClick={() => setSeparador('avaliacoes')}
+          style={{ cursor: 'pointer' }}
+        >
+          ⭐ Moderação de Avaliações
+        </button>
       </nav>
-      <select value={perfil} onChange={(e) => setPerfil(e.target.value)}>
-  <option value="FUNCIONARIO">Funcionário (Atendente)</option>
-  <option value="MECANICO">Mecânico</option>
-  <option value="ADMINISTRADOR">Administrador</option>
-</select>
+
       {separador === 'dashboard' && <Dashboard />}
       {separador === 'contas' && <ContasInternas />}
+      {separador === 'avaliacoes' && <ModerarAvaliacoes />}
     </section>
   );
 }
 
 // ==========================================
-// COMPONENTE: DASHBOARD
+// DASHBOARD
 // ==========================================
 function Dashboard() {
   const [dados, setDados] = useState(null);
@@ -54,7 +58,7 @@ function Dashboard() {
 
   if (aCarregar) return <p>A carregar métricas do dashboard…</p>;
   if (erro) return <p className="erro" role="alert">Erro ao carregar dashboard: {erro}</p>;
-  if (!dados) return <p className="vazio">Sem dados disponíveis para o período.</p>;
+  if (!dados) return <p className="vazio">Sem dados disponíveis.</p>;
 
   return (
     <div>
@@ -85,7 +89,7 @@ function Dashboard() {
             <ul className="lista-simples">
               {Object.entries(dados.osPorEstado).map(([estado, qtd]) => (
                 <li key={estado}>
-                  <span>{estado.replace('_', ' ')}</span> 
+                  <span>{estado.replace(/_/g, ' ').toLowerCase()}</span>
                   <strong>{qtd}</strong>
                 </li>
               ))}
@@ -114,13 +118,13 @@ function Dashboard() {
 }
 
 // ==========================================
-// COMPONENTE: CONTAS INTERNAS
+// CONTAS INTERNAS
 // ==========================================
 function ContasInternas() {
   const [contas, setContas] = useState(null);
   const [erro, setErro] = useState('');
   const [msg, setMsg] = useState('');
-  
+
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -155,7 +159,7 @@ function ContasInternas() {
       await api('PATCH', `/admin/utilizadores/${id}`, { body: { ativo: !ativoAtual } });
       await carregar();
     } catch (e) {
-      setErro(e.message); // Aqui aparecerá "Não é possível desativar o último administrador ativo" se aplicável
+      setErro(e.message);
     }
   }
 
@@ -181,7 +185,8 @@ function ContasInternas() {
           <div style={{ flex: '1 1 150px' }}>
             <label>Perfil</label>
             <select value={perfil} onChange={(e) => setPerfil(e.target.value)}>
-              <option value="FUNCIONARIO">Funcionário</option>
+              <option value="FUNCIONARIO">Funcionário (Atendente)</option>
+              <option value="MECANICO">Mecânico</option>
               <option value="ADMINISTRADOR">Administrador</option>
             </select>
           </div>
@@ -204,13 +209,12 @@ function ContasInternas() {
                 <td>{c.email}</td>
                 <td>{c.perfil}</td>
                 <td>
-                  {c.ativo ? 
-                    <span className="badge badge-aprovado">Ativo</span> : 
-                    <span className="badge badge-rejeitado">Inativo</span>
-                  }
+                  {c.ativo
+                    ? <span className="badge badge-aprovado">Ativo</span>
+                    : <span className="badge badge-rejeitado">Inativo</span>}
                 </td>
                 <td>
-                  <button 
+                  <button
                     className={`botao ${c.ativo ? 'botao-perigo' : 'botao-secundario'}`}
                     onClick={() => alternarAtivo(c.id, c.ativo)}
                     style={{ fontSize: '0.85rem', padding: '4px 8px' }}
@@ -223,6 +227,81 @@ function ContasInternas() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ==========================================
+// MODERAÇÃO DE AVALIAÇÕES (F12)
+// ==========================================
+function ModerarAvaliacoes() {
+  const [avaliacoes, setAvaliacoes] = useState(null);
+  const [erro, setErro] = useState('');
+  const [msg, setMsg] = useState('');
+
+  async function carregar() {
+    try {
+      setAvaliacoes(await api('GET', '/admin/avaliacoes'));
+      setErro('');
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  async function alternarPublicacao(id, estadoAtual) {
+    try {
+      await api('PATCH', `/admin/avaliacoes/${id}`, { body: { publicada: !estadoAtual } });
+      setMsg('Estado atualizado.');
+      await carregar();
+      setTimeout(() => setMsg(''), 3000);
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  if (!avaliacoes) return <p>A carregar avaliações…</p>;
+
+  return (
+    <div className="cartao">
+      <h3>Avaliações dos Clientes</h3>
+      {msg && <p className="info">{msg}</p>}
+      {erro && <p className="erro" role="alert">{erro}</p>}
+
+      {avaliacoes.length === 0 ? (
+        <p className="vazio">Sem avaliações registadas.</p>
+      ) : (
+        <table className="tabela">
+          <thead>
+            <tr><th>Cliente</th><th>Data</th><th>Nota</th><th>Comentário</th><th>Estado</th><th>Ação</th></tr>
+          </thead>
+          <tbody>
+            {avaliacoes.map((a) => (
+              <tr key={a.id} style={{ opacity: a.publicada ? 1 : 0.5 }}>
+                <td>{a.clienteNome}</td>
+                <td>{fmtData(a.createdAt)}</td>
+                <td>{'★'.repeat(a.classificacao)}{'☆'.repeat(5 - a.classificacao)}</td>
+                <td>{a.comentario || '—'}</td>
+                <td>
+                  {a.publicada
+                    ? <span className="badge badge-aprovado">Publicada</span>
+                    : <span className="badge badge-rejeitado">Ocultada</span>}
+                </td>
+                <td>
+                  <button
+                    className={`botao ${a.publicada ? 'botao-perigo' : 'botao-secundario'}`}
+                    onClick={() => alternarPublicacao(a.id, a.publicada)}
+                    style={{ fontSize: '0.85rem', padding: '4px 8px' }}
+                  >
+                    {a.publicada ? 'Ocultar' : 'Publicar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

@@ -56,7 +56,7 @@ export function criarPgUtilizadorRepository() {
       const { rows } = await pool.query(
         `SELECT id, nome, email, telefone, perfil, ativo, created_at
          FROM utilizadores
-         WHERE perfil IN ('FUNCIONARIO','ADMINISTRADOR')
+        WHERE perfil IN ('FUNCIONARIO','ADMINISTRADOR','MECANICO')
          ORDER BY created_at ASC`,
       );
       return rows.map(mapRow);
