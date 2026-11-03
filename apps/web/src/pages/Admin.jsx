@@ -137,7 +137,7 @@ function ContasInternas() {
       await api('PATCH', `/admin/utilizadores/${id}`, { body: { ativo: !ativoAtual } });
       await carregar();
     } catch (e) {
-      setErro(e.message);
+      setErro(e.message); // Mostra "Não é possível desativar o último administrador ativo" se aplicável
     }
   }
 
