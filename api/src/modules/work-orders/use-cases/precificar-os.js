@@ -32,7 +32,14 @@ export function criarPrecificarOS({ osRepo }) {
     // Transição: AGUARDANDO_PRECO_FUNCIONARIO → AGUARDANDO_APROVACAO_CLIENTE
     const destino = ACOES_TRANSICAO.precificar;
     if (!podeTransitar(os.estado, destino)) throw erros.transicaoInvalida(os.estado);
-    await osRepo.atualizarEstado({ ordemId, estado: destino, utilizadorId: utilizador.id, motivo: 'Orçamento precificado e enviado ao cliente' });
+    const atualizada = await osRepo.atualizarEstado({
+      ordemId,
+      estadoAnterior: os.estado,
+      estado: destino,
+      utilizadorId: utilizador.id,
+      motivo: 'Orçamento precificado e enviado ao cliente',
+    });
+    if (!atualizada) throw erros.transicaoInvalida(os.estado);
 
     return { mensagem: 'Orçamento enviado ao cliente para aprovação.' };
   };

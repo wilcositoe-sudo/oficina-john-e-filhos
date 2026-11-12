@@ -8,6 +8,9 @@ export const VeiculoRepository = {
   async procurarPorId(id) {
     throw new Error('Porta não implementada: procurarPorId');
   },
+  async atualizar({ id, utilizadorId, matricula, marca, modelo, ano }) {
+    throw new Error('Porta não implementada: atualizar');
+  },
   async listarPorUtilizador(utilizadorId) {
     throw new Error('Porta não implementada: listarPorUtilizador');
   },

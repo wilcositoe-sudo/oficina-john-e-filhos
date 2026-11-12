@@ -1,12 +1,40 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
+import Estrelas from '../components/Estrelas.jsx';
 
 const fmtMoeda = (v) => `${Number(v ?? 0).toFixed(2)} MZN`;
 const fmtData = (iso) =>
   iso ? new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Maputo' }) : '';
 
-function Estrelas({ n }) {
-  return <span className="estrelas" aria-label={`${n} de 5 estrelas`}>{'★'.repeat(n)}{'☆'.repeat(5 - n)}</span>;
+const IMAGENS_SERVICOS = [
+  'photo-1486262715619-67b85e0b08d3',
+  'photo-1632823471565-1ecdf5c7e9c9',
+  'photo-1487754180451-c456f719a1fc',
+  'photo-1471478331149-7c403f3c35c9',
+  'photo-1503376780353-7e6692767b70',
+  'photo-1493238792000-8113da705763',
+];
+
+const IMAGENS_OFICINA = [
+  {
+    src: 'photo-1489824904134-891ab64532f1',
+    alt: 'Técnico a trabalhar num veículo numa oficina',
+    classe: 'landing-gallery-wide',
+  },
+  {
+    src: 'photo-1517524206127-48bbd363f3d7',
+    alt: 'Detalhe de um automóvel em manutenção',
+    classe: '',
+  },
+  {
+    src: 'photo-1519641471654-76ce0107ad1b',
+    alt: 'Equipamento de diagnóstico automóvel',
+    classe: '',
+  },
+];
+
+function urlImagem(id, largura = 900) {
+  return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${largura}&q=80`;
 }
 
 // Landing pública — apresenta a oficina antes do login.
@@ -14,21 +42,54 @@ function Estrelas({ n }) {
 export default function Landing({ irParaLogin, irParaRegisto }) {
   const [servicos, setServicos] = useState(null);
   const [avaliacoes, setAvaliacoes] = useState(null);
-  const [erro, setErro] = useState('');
+  const [erroServicos, setErroServicos] = useState('');
+  const [erroAvaliacoes, setErroAvaliacoes] = useState('');
+  const [servicoSelecionado, setServicoSelecionado] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      api('GET', '/servicos', { auth: false }).catch(() => []),
-      api('GET', '/avaliacoes', { auth: false }).catch(() => []),
-    ])
-      .then(([s, a]) => { setServicos(s); setAvaliacoes(a); })
-      .catch((e) => setErro(e.message));
+    let ativo = true;
+    Promise.allSettled([
+      api('GET', '/servicos', { auth: false }),
+      api('GET', '/avaliacoes', { auth: false }),
+    ]).then(([resultadoServicos, resultadoAvaliacoes]) => {
+      if (!ativo) return;
+
+      if (resultadoServicos.status === 'fulfilled') {
+        setServicos(resultadoServicos.value);
+      } else {
+        setErroServicos(resultadoServicos.reason?.message ?? String(resultadoServicos.reason));
+      }
+
+      if (resultadoAvaliacoes.status === 'fulfilled') {
+        setAvaliacoes(resultadoAvaliacoes.value);
+      } else {
+        setErroAvaliacoes(resultadoAvaliacoes.reason?.message ?? String(resultadoAvaliacoes.reason));
+      }
+    });
+
+    return () => { ativo = false; };
   }, []);
+
+  useEffect(() => {
+    if (!servicoSelecionado) return undefined;
+    const aoTeclar = (event) => {
+      if (event.key === 'Escape') setServicoSelecionado(null);
+    };
+    document.addEventListener('keydown', aoTeclar);
+    return () => document.removeEventListener('keydown', aoTeclar);
+  }, [servicoSelecionado]);
 
   return (
     <div className="landing">
       {/* HERO */}
       <header className="landing-hero">
+        <img
+          className="landing-hero-image"
+          src={urlImagem('photo-1492144534655-ae79c964c9d7', 2000)}
+          alt=""
+          fetchPriority="high"
+          onError={(event) => { event.currentTarget.style.display = 'none'; }}
+        />
         <nav className="landing-nav">
           <div className="landing-logo">
             <svg viewBox="0 0 64 64" width="36" height="36" aria-hidden="true">
@@ -46,83 +107,148 @@ export default function Landing({ irParaLogin, irParaRegisto }) {
 
         <div className="hero-conteudo">
           <span className="hero-etiqueta">Moatize · Tete · Moçambique</span>
-          <h1>Cuidamos do seu veículo<br />como se fosse nosso.</h1>
+          <h1>Excelência em cada reparação.</h1>
           <p className="hero-sub">
-            Diagnóstico, reparação e manutenção com transparência.
-            Peça orçamento, acompanhe a reparação em tempo real e pague em segurança.
+            Transformamos tecnologia, experiência e dedicação em confiança para o
+            seu automóvel.
           </p>
           <div className="hero-acoes">
-            <button className="botao botao-grande" onClick={irParaRegisto}>Pedir orçamento</button>
-            <a href="#servicos" className="botao botao-secundario botao-grande">Ver serviços</a>
+            <a href="#servicos" className="botao botao-grande">Explorar serviços</a>
+            <a href="#oficina" className="botao botao-secundario botao-grande">Conhecer a oficina</a>
+            <button className="botao botao-outline-light botao-grande" onClick={irParaRegisto}>
+              Solicitar assistência
+            </button>
+          </div>
+          <div className="landing-hero-proof">
+            <span><strong>{servicos?.length ?? '—'}</strong> serviços disponíveis</span>
+            <span className="landing-proof-divider" />
+            <span><strong>{avaliacoes?.length ?? '—'}</strong> avaliações de clientes</span>
           </div>
         </div>
       </header>
 
       {/* SOBRE */}
-      <section className="landing-seccao" id="sobre">
-        <h2>Sobre a oficina</h2>
-        <p className="seccao-sub">
-          Somos uma oficina familiar em Moatize, dedicada a oferecer um serviço mecânico
-          de confiança. Combinamos experiência técnica com uma gestão moderna — para que
-          saiba sempre o que está a ser feito no seu veículo e quanto vai custar.
-        </p>
-        <div className="grelha-3">
-          <div className="cartao-destaque">
-            <div className="cartao-icone">🔧</div>
-            <h3>Diagnóstico rigoroso</h3>
-            <p>Identificamos o problema antes de avançar, sem surpresas no final.</p>
+      <section className="landing-about" id="oficina">
+        <div className="landing-about-image">
+          <img
+            src={urlImagem('photo-1525609004556-c46c7d6cf023', 1200)}
+            alt="Trabalho técnico numa oficina automóvel"
+            loading="lazy"
+            onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+          />
+          <span className="landing-image-label">Cuidado técnico, em cada detalhe</span>
+        </div>
+        <div className="landing-about-copy">
+          <span className="landing-section-kicker">A oficina</span>
+          <h2>Confiança construída com experiência e transparência.</h2>
+          <p>
+            Somos uma oficina familiar em Moatize. Aliamos experiência mecânica a
+            um acompanhamento claro para que saiba o que está a ser feito no seu
+            veículo em cada etapa.
+          </p>
+          <div className="landing-about-points">
+            <span><b>01</b> Diagnóstico acompanhado</span>
+            <span><b>02</b> Orçamento antes da reparação</span>
+            <span><b>03</b> Acompanhamento da ordem de serviço</span>
           </div>
-          <div className="cartao-destaque">
-            <div className="cartao-icone">📱</div>
-            <h3>Acompanhe online</h3>
-            <p>Veja o estado da sua reparação, converse com a oficina e receba o recibo.</p>
-          </div>
-          <div className="cartao-destaque">
-            <div className="cartao-icone">💳</div>
-            <h3>Pagamento flexível</h3>
-            <p>Presencial, cartão ou mobile money — com recibo emitido automaticamente.</p>
-          </div>
+          <button className="botao" onClick={irParaRegisto}>Solicitar assistência</button>
         </div>
       </section>
 
       {/* CATÁLOGO — RF01 */}
       <section className="landing-seccao landing-seccao-alt" id="servicos">
-        <h2>Os nossos serviços</h2>
-        <p className="seccao-sub">Preços base indicativos. O valor final depende do diagnóstico.</p>
+        <div className="landing-section-heading">
+          <div>
+            <span className="landing-section-kicker">Especialidades</span>
+            <h2>Serviços para manter o seu veículo em movimento.</h2>
+          </div>
+          <p className="seccao-sub">Preços base indicativos. O valor final depende do diagnóstico.</p>
+        </div>
         {servicos === null ? (
-          <p>A carregar serviços…</p>
+          erroServicos ? <p className="erro" role="alert">Não foi possível carregar os serviços: {erroServicos}</p> : <p>A carregar serviços…</p>
         ) : servicos.length === 0 ? (
           <p className="vazio">Sem serviços disponíveis de momento.</p>
         ) : (
-          <div className="grelha-servicos">
-            {servicos.map((s) => (
-              <article key={s.id} className="cartao-servico">
-                <h3>{s.nome}</h3>
-                {s.descricao && <p>{s.descricao}</p>}
-                <p className="servico-preco">{fmtMoeda(s.precoBase)}</p>
+          <div className="landing-services-grid">
+            {servicos.map((s, index) => {
+              const imagem = IMAGENS_SERVICOS[index];
+              return (
+              <article key={s.id} className="landing-service-card">
+                <button
+                  type="button"
+                  className="landing-service-image"
+                  onClick={() => setServicoSelecionado(s)}
+                  aria-label={`Ver detalhes de ${s.nome}`}
+                >
+                  {imagem && (
+                    <img
+                      src={urlImagem(imagem, 900)}
+                      alt=""
+                      loading="lazy"
+                      onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                  )}
+                  <span className="landing-service-view">Ver serviço <span aria-hidden="true">↗</span></span>
+                </button>
+                <div className="landing-service-copy">
+                  <span className="landing-service-index">{String(index + 1).padStart(2, '0')}</span>
+                  <h3>{s.nome}</h3>
+                  {s.descricao && <p>{s.descricao}</p>}
+                  <div className="landing-service-bottom">
+                    <strong>{fmtMoeda(s.precoBase)}</strong>
+                    <button type="button" className="ligacao" onClick={() => setServicoSelecionado(s)}>
+                      Consultar detalhes
+                    </button>
+                  </div>
+                </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <button className="botao botao-grande" onClick={irParaRegisto}>
-            Pedir orçamento gratuito
-          </button>
+        <div className="landing-section-cta">
+          <span>Precisa de ajuda com o seu automóvel?</span>
+          <button className="botao" onClick={irParaRegisto}>Pedir assistência</button>
+        </div>
+      </section>
+
+      <section className="landing-gallery" aria-labelledby="gallery-title">
+        <div className="landing-section-heading">
+          <div>
+            <span className="landing-section-kicker">Precisão em cada etapa</span>
+            <h2 id="gallery-title">Conhecimento técnico. Cuidado próximo.</h2>
+          </div>
+          <p className="seccao-sub">
+            Uma oficina preparada para acompanhar o seu veículo do diagnóstico à conclusão.
+          </p>
+        </div>
+        <div className="landing-gallery-grid">
+          {IMAGENS_OFICINA.map((imagem) => (
+            <figure className={imagem.classe} key={imagem.src}>
+              <img
+                src={urlImagem(imagem.src, 1100)}
+                alt={imagem.alt}
+                loading="lazy"
+                onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+              />
+            </figure>
+          ))}
         </div>
       </section>
 
       {/* AVALIAÇÕES — RF09 */}
       <section className="landing-seccao" id="avaliacoes">
+        <span className="landing-section-kicker">Experiência dos clientes</span>
         <h2>O que dizem os nossos clientes</h2>
         {avaliacoes === null ? (
-          <p>A carregar avaliações…</p>
+          erroAvaliacoes ? <p className="erro" role="alert">Não foi possível carregar as avaliações: {erroAvaliacoes}</p> : <p>A carregar avaliações…</p>
         ) : avaliacoes.length === 0 ? (
           <p className="vazio">Seja o primeiro a avaliar após o seu serviço.</p>
         ) : (
           <div className="grelha-avaliacoes">
             {avaliacoes.slice(0, 6).map((a) => (
               <article key={a.id} className="cartao-avaliacao">
-                <Estrelas n={a.classificacao} />
+                <Estrelas valor={a.classificacao} />
                 {a.comentario && <p>"{a.comentario}"</p>}
                 <small className="avaliacao-autor">— {a.clienteNome} · {fmtData(a.createdAt)}</small>
               </article>
@@ -133,6 +259,7 @@ export default function Landing({ irParaLogin, irParaRegisto }) {
 
       {/* CONTACTOS */}
       <section className="landing-seccao landing-seccao-alt" id="contactos">
+        <span className="landing-section-kicker">Estamos por perto</span>
         <h2>Visite-nos ou contacte-nos</h2>
         <div className="grelha-3">
           <div className="cartao-destaque">
@@ -165,7 +292,49 @@ export default function Landing({ irParaLogin, irParaRegisto }) {
         <p>© {new Date().getFullYear()} Oficina John e Filhos · Moatize, Moçambique</p>
       </footer>
 
-      {erro && <p className="erro" style={{ position: 'fixed', bottom: 8, right: 8 }}>{erro}</p>}
+      {servicoSelecionado && (
+        <div
+          className="landing-service-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setServicoSelecionado(null);
+          }}
+        >
+          <section className="landing-service-modal" role="dialog" aria-modal="true" aria-labelledby="service-modal-title">
+            <button
+              type="button"
+              className="landing-modal-close"
+              onClick={() => setServicoSelecionado(null)}
+              aria-label="Fechar detalhes"
+            >
+              ×
+            </button>
+            {IMAGENS_SERVICOS[servicos?.findIndex((item) => item.id === servicoSelecionado.id)] && (
+              <img
+                src={urlImagem(IMAGENS_SERVICOS[servicos.findIndex((item) => item.id === servicoSelecionado.id)], 1200)}
+                alt=""
+                onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+              />
+            )}
+            <div>
+              <span className="landing-section-kicker">Serviço da oficina</span>
+              <h2 id="service-modal-title">{servicoSelecionado.nome}</h2>
+              {servicoSelecionado.descricao && <p>{servicoSelecionado.descricao}</p>}
+              <strong className="landing-modal-price">{fmtMoeda(servicoSelecionado.precoBase)}</strong>
+              <button
+                type="button"
+                className="botao"
+                onClick={() => {
+                  setServicoSelecionado(null);
+                  irParaRegisto();
+                }}
+              >
+                Solicitar assistência
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

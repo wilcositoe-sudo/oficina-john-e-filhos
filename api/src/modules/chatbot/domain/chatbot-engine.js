@@ -209,6 +209,15 @@ export function processarMensagem({ texto, conversa, cliente, veiculos, servicos
     }
 
     if (conversa.veiculoId) {
+      if (String(texto ?? '').trim().length < 10) {
+        return res({
+          atualizar: { etapa: 'DESCRIVER_PROBLEMA' },
+          resposta:
+            'Descreve o problema com pelo menos 10 caracteres para podermos registar o pedido.',
+          metadata: {},
+        });
+      }
+
       return res({
         atualizar: {
           etapa: 'DESCRIVER_PROBLEMA',
@@ -262,10 +271,11 @@ export function processarMensagem({ texto, conversa, cliente, veiculos, servicos
   if (etapa === 'DESCRIVER_PROBLEMA') {
     const problema = String(texto ?? '').trim();
 
-    if (problema.length < 5) {
+    if (problema.length < 10) {
       return res({
         atualizar: { etapa: 'DESCRIVER_PROBLEMA' },
-        resposta: 'Podes descrever o problema com um pouco mais de detalhe?',
+        resposta:
+          'Descreve o problema com pelo menos 10 caracteres para podermos registar o pedido.',
         metadata: {},
       });
     }

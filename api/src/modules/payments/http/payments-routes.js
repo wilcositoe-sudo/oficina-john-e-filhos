@@ -1,33 +1,8 @@
 import { Router } from 'express';
 import { asyncRoute } from '../../../shared/http/async-route.js';
-import { criarPgPagamentoRepository } from '../adapters/pg-pagamento-repository.js';
-import { criarFakePaymentProvider } from '../adapters/fake-payment-provider.js';
-import { criarPgOsRepository } from '../../work-orders/adapters/pg-os-repository.js';
-import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
-import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
-import { createRequireAuth } from '../../auth/http/session-middleware.js';
-import { criarRegistarPagamento } from '../use-cases/registar-pagamento.js';
-import { criarProcessarWebhook } from '../use-cases/processar-webhook.js';
-import { criarConfirmacaoPagamento } from '../use-cases/confirmacao-pagamento.js';
-import { criarListarPagamentos } from '../use-cases/listar-pagamentos.js';
-import { criarObterRecibo } from '../use-cases/obter-recibo.js';
 
-export function createPaymentsRouter() {
+export function createPaymentsRouter({ requireAuth, registar, webhook, listar, recibo }) {
   const router = Router();
-  const pagamentoRepo = criarPgPagamentoRepository();
-  const osRepo = criarPgOsRepository();
-  const provider = criarFakePaymentProvider();
-  const requireAuth = createRequireAuth({
-    sessaoRepo: criarPgSessaoRepository(),
-    utilizadorRepo: criarPgUtilizadorRepository(),
-  });
-
-  // Lógica partilhada: presencial e webhook usam o MESMO caminho de confirmação
-  const confirmacao = criarConfirmacaoPagamento({ pagamentoRepo, osRepo });
-  const registar = criarRegistarPagamento({ pagamentoRepo, osRepo, provider, confirmacao });
-  const webhook = criarProcessarWebhook({ pagamentoRepo, osRepo, confirmacao });
-  const listar = criarListarPagamentos({ pagamentoRepo, osRepo });
-  const recibo = criarObterRecibo({ pagamentoRepo, osRepo });
 
   router.post('/ordens/:id/pagamentos', requireAuth, asyncRoute(async (req, res) => {
     const resultado = await registar({ ordemId: req.params.id, utilizador: req.utilizador, ...(req.body ?? {}) });

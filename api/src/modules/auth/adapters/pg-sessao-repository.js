@@ -21,5 +21,12 @@ export function criarPgSessaoRepository() {
     async revogar(token) {
       await pool.query('UPDATE sessoes SET revogada = TRUE WHERE token = $1', [token]);
     },
+
+    async revogarTodas(utilizadorId) {
+      await pool.query(
+        'UPDATE sessoes SET revogada = TRUE WHERE utilizador_id = $1 AND revogada = FALSE',
+        [utilizadorId],
+      );
+    },
   };
 }

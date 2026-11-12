@@ -1,126 +1,57 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
-
-const fmtMoeda = (v) => `${Number(v ?? 0).toFixed(2)} MZN`;
-const fmtData = (iso) => iso ? new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Maputo' }) : '';
+import RelatoriosAdmin from '../components/RelatoriosAdmin.jsx';
+import { useFeedback } from '../components/Feedback.jsx';
+import { IconChart, IconLightbulb, IconStar, IconUsers } from '../components/icons.jsx';
+import Estrelas from '../components/Estrelas.jsx';
 
 export default function Admin() {
   const [separador, setSeparador] = useState('dashboard');
+  const feedback = useFeedback();
 
   return (
     <section>
       <h2>Administração do Sistema</h2>
-      <nav className="navegacao" style={{ marginBottom: 24, display: 'flex', gap: '8px' }}>
+      <nav className="navegacao admin-abas" aria-label="Secções de administração">
         <button
+          type="button"
           className={`aba ${separador === 'dashboard' ? 'ativa' : ''}`}
           onClick={() => setSeparador('dashboard')}
-          style={{ cursor: 'pointer' }}
+          aria-pressed={separador === 'dashboard'}
         >
-          📊 Dashboard
+          <IconChart /> Dashboard
         </button>
         <button
+          type="button"
           className={`aba ${separador === 'contas' ? 'ativa' : ''}`}
           onClick={() => setSeparador('contas')}
-          style={{ cursor: 'pointer' }}
+          aria-pressed={separador === 'contas'}
         >
-          👥 Contas Internas
+          <IconUsers /> Contas Internas
         </button>
         <button
+          type="button"
           className={`aba ${separador === 'avaliacoes' ? 'ativa' : ''}`}
           onClick={() => setSeparador('avaliacoes')}
-          style={{ cursor: 'pointer' }}
+          aria-pressed={separador === 'avaliacoes'}
         >
-          ⭐ Moderação de Avaliações
+          <IconStar /> Moderação de Avaliações
         </button>
       </nav>
 
-      {separador === 'dashboard' && <Dashboard />}
-      {separador === 'contas' && <ContasInternas />}
-      {separador === 'avaliacoes' && <ModerarAvaliacoes />}
+      <div className="admin-conteudo" role="tabpanel">
+        {separador === 'dashboard' && <RelatoriosAdmin />}
+        {separador === 'contas' && <ContasInternas feedback={feedback} />}
+        {separador === 'avaliacoes' && <ModerarAvaliacoes />}
+      </div>
     </section>
   );
 }
 
 // ==========================================
-// DASHBOARD
+// CONTAS INTERNAS (Fase 4A: permissão de catálogo)
 // ==========================================
-function Dashboard() {
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState('');
-  const [aCarregar, setACarregar] = useState(true);
-
-  useEffect(() => {
-    api('GET', '/admin/dashboard')
-      .then(setDados)
-      .catch((e) => setErro(e.message))
-      .finally(() => setACarregar(false));
-  }, []);
-
-  if (aCarregar) return <p>A carregar métricas do dashboard…</p>;
-  if (erro) return <p className="erro" role="alert">Erro ao carregar dashboard: {erro}</p>;
-  if (!dados) return <p className="vazio">Sem dados disponíveis.</p>;
-
-  return (
-    <div>
-      <div className="grelha-kpi">
-        <div className="cartao kpi">
-          <h3>Total de OS</h3>
-          <p className="kpi-valor">{dados.totalOS}</p>
-          <small>No período selecionado</small>
-        </div>
-        <div className="cartao kpi">
-          <h3>Faturação Confirmada</h3>
-          <p className="kpi-valor">{fmtMoeda(dados.faturacaoTotal)}</p>
-          <small>Pagamentos recebidos</small>
-        </div>
-        <div className="cartao kpi">
-          <h3>Tempo Médio de Reparação</h3>
-          <p className="kpi-valor">{dados.tempoMedioReparacaoHoras !== null ? `${dados.tempoMedioReparacaoHoras}h` : 'N/A'}</p>
-          <small>Das OS concluídas</small>
-        </div>
-      </div>
-
-      <div className="grelha-2-colunas" style={{ marginTop: 24 }}>
-        <div className="cartao">
-          <h3>OS por Estado</h3>
-          {Object.keys(dados.osPorEstado).length === 0 ? (
-            <p className="vazio">Sem dados.</p>
-          ) : (
-            <ul className="lista-simples">
-              {Object.entries(dados.osPorEstado).map(([estado, qtd]) => (
-                <li key={estado}>
-                  <span>{estado.replace(/_/g, ' ').toLowerCase()}</span>
-                  <strong>{qtd}</strong>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="cartao">
-          <h3>Serviços Mais Solicitados</h3>
-          {dados.servicosMaisSolicitados.length === 0 ? (
-            <p className="vazio">Sem dados.</p>
-          ) : (
-            <table className="tabela">
-              <thead><tr><th>Serviço</th><th>Qtd.</th></tr></thead>
-              <tbody>
-                {dados.servicosMaisSolicitados.map((s, i) => (
-                  <tr key={i}><td>{s.nome}</td><td>{s.quantidade}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==========================================
-// CONTAS INTERNAS
-// ==========================================
-function ContasInternas() {
+function ContasInternas({ feedback }) {
   const [contas, setContas] = useState(null);
   const [erro, setErro] = useState('');
   const [msg, setMsg] = useState('');
@@ -155,6 +86,7 @@ function ContasInternas() {
   }
 
   async function alternarAtivo(id, ativoAtual) {
+    setErro(''); setMsg('');
     try {
       await api('PATCH', `/admin/utilizadores/${id}`, { body: { ativo: !ativoAtual } });
       await carregar();
@@ -163,7 +95,54 @@ function ContasInternas() {
     }
   }
 
-  if (!contas) return <p>A carregar contas…</p>;
+  async function apagarConta(conta) {
+    const confirmado = await feedback.confirmar({
+      titulo: 'Apagar conta interna',
+      mensagem: `Apagar a conta de "${conta.nome}"? Esta ação não pode ser desfeita.`,
+      textoConfirmar: 'Apagar conta',
+      perigo: true,
+    });
+    if (!confirmado) return;
+    setErro('');
+    setMsg('');
+    try {
+      await api('DELETE', `/admin/utilizadores/${conta.id}`);
+      setMsg(`Conta de ${conta.nome} apagada.`);
+      await carregar();
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  // ★ Fase 4A — autorizar/revogar permissão de gerir catálogo (serviços/peças)
+  async function alternarCatalogo(id, podeAtual) {
+    setErro(''); setMsg('');
+    try {
+      await api('PATCH', `/admin/utilizadores/${id}/permissao-catalogo`, {
+        body: { podeGerirCatalogo: !podeAtual },
+      });
+      setMsg(
+        !podeAtual
+          ? 'Funcionário autorizado a criar/editar serviços e peças.'
+          : 'Permissão de catálogo revogada.',
+      );
+      await carregar();
+      setTimeout(() => setMsg(''), 3500);
+    } catch (e) {
+      setErro(e.message);
+    }
+  }
+
+  if (contas === null) {
+    return erro ? (
+      <div className="cartao admin-estado-erro">
+        <p className="erro" role="alert">Não foi possível carregar as contas: {erro}</p>
+        <button type="button" className="botao botao-secundario" onClick={carregar}>
+          Tentar novamente
+        </button>
+      </div>
+    ) : <p role="status">A carregar contas…</p>;
+  }
 
   return (
     <div>
@@ -192,6 +171,11 @@ function ContasInternas() {
           </div>
           <button className="botao" type="submit" style={{ height: '42px' }}>Criar</button>
         </form>
+        <p className="hint" style={{ marginTop: 10 }}>
+          <IconLightbulb /> <strong>Permissão de catálogo:</strong> só administradores e funcionários autorizados
+          conseguem criar/editar serviços e peças. Autoriza um funcionário na tabela abaixo.
+          O mecânico não precisa disto — ele propõe itens (do catálogo ou personalizados).
+        </p>
         {msg && <p className="info" style={{ marginTop: 12 }}>{msg}</p>}
         {erro && <p className="erro" role="alert" style={{ marginTop: 12 }}>{erro}</p>}
       </div>
@@ -200,7 +184,14 @@ function ContasInternas() {
         <h3>Contas existentes</h3>
         <table className="tabela">
           <thead>
-            <tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Estado</th><th>Ação</th></tr>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Perfil</th>
+              <th>Estado</th>
+              <th>Catálogo</th>
+              <th>Ações</th>
+            </tr>
           </thead>
           <tbody>
             {contas.map((c) => (
@@ -213,14 +204,57 @@ function ContasInternas() {
                     ? <span className="badge badge-aprovado">Ativo</span>
                     : <span className="badge badge-rejeitado">Inativo</span>}
                 </td>
+
+                {/* ★ Coluna Catálogo */}
                 <td>
-                  <button
-                    className={`botao ${c.ativo ? 'botao-perigo' : 'botao-secundario'}`}
-                    onClick={() => alternarAtivo(c.id, c.ativo)}
-                    style={{ fontSize: '0.85rem', padding: '4px 8px' }}
-                  >
-                    {c.ativo ? 'Desativar' : 'Ativar'}
-                  </button>
+                  {c.perfil === 'ADMINISTRADOR' && (
+                    <span className="badge badge-aprovado" title="Administradores têm permissão automática">
+                      Automática
+                    </span>
+                  )}
+
+                  {c.perfil === 'MECANICO' && (
+                    <span className="hint" title="Mecânico propõe itens; não gerir o catálogo">—</span>
+                  )}
+
+                  {c.perfil === 'FUNCIONARIO' && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span className={`badge ${c.podeGerirCatalogo ? 'badge-aprovado' : 'badge-rejeitado'}`}>
+                        {c.podeGerirCatalogo ? 'Autorizado' : 'Não autorizado'}
+                      </span>
+                      <button
+                        className={`botao ${c.podeGerirCatalogo ? 'botao-perigo' : 'botao-secundario'}`}
+                        onClick={() => alternarCatalogo(c.id, c.podeGerirCatalogo)}
+                        style={{ fontSize: '0.8rem', padding: '3px 7px' }}
+                        title={
+                          c.podeGerirCatalogo
+                            ? 'Revogar permissão de criar/editar serviços e peças'
+                            : 'Autorizar a criar/editar serviços e peças'
+                        }
+                      >
+                        {c.podeGerirCatalogo ? 'Revogar' : 'Autorizar'}
+                      </button>
+                    </div>
+                  )}
+                </td>
+
+                <td>
+                  <div className="acoes-tabela">
+                    <button
+                      className={`botao ${c.ativo ? 'botao-perigo' : 'botao-secundario'}`}
+                      onClick={() => alternarAtivo(c.id, c.ativo)}
+                      style={{ fontSize: '0.85rem', padding: '4px 8px' }}
+                    >
+                      {c.ativo ? 'Desativar' : 'Ativar'}
+                    </button>
+                    <button
+                      className="botao botao-perigo"
+                      onClick={() => apagarConta(c)}
+                      style={{ fontSize: '0.85rem', padding: '4px 8px' }}
+                    >
+                      Apagar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -281,7 +315,7 @@ function ModerarAvaliacoes() {
               <tr key={a.id} style={{ opacity: a.publicada ? 1 : 0.5 }}>
                 <td>{a.clienteNome}</td>
                 <td>{fmtData(a.createdAt)}</td>
-                <td>{'★'.repeat(a.classificacao)}{'☆'.repeat(5 - a.classificacao)}</td>
+                <td><Estrelas valor={a.classificacao} /></td>
                 <td>{a.comentario || '—'}</td>
                 <td>
                   {a.publicada

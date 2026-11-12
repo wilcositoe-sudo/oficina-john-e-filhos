@@ -19,14 +19,9 @@ export default function RecuperarSenha({ irParaLogin, irParaRedefinirComToken })
         auth: false,
       });
 
-      // DEBUG: Vamos ver no console do browser o que o backend devolveu
-      console.log('📦 Resposta completa do backend:', resultado);
-
       if (resultado && resultado.tokenDeTeste) {
-        console.log('✅ Token encontrado! A redirecionar com o token:', resultado.tokenDeTeste);
         irParaRedefinirComToken(resultado.tokenDeTeste);
       } else {
-        console.log('⚠️ Token não encontrado na resposta. A mostrar tela de sucesso genérica.');
         setSucesso(true);
       }
     } catch (err) {
@@ -43,7 +38,7 @@ export default function RecuperarSenha({ irParaLogin, irParaRedefinirComToken })
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>✉️</div>
           <h1>Verifique o seu e-mail</h1>
           <p className="subtitulo">
-            Enviamos as instruções de recuperação para <strong>{email}</strong>.
+            Se este e-mail estiver registado, receberá as instruções de recuperação.
           </p>
           <button className="botao botao-secundario" onClick={irParaLogin} style={{ marginTop: 24, width: '100%' }}>
             Voltar ao Login

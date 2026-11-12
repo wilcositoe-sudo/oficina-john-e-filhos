@@ -1,0 +1,8 @@
+Vehicle model: Quaternius low-poly car
+Source: https://poly.pizza/m/unqqkULtRU
+Author: Quaternius
+License: CC0 1.0 Universal
+
+The login and registration scene separates the hood geometry at runtime so it can
+be animated independently. The engine and mechanic in that scene are generated
+from project-owned Three.js geometry.

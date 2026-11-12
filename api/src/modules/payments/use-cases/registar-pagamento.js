@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { DomainError, erros } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 import { paraCentimos, deCentimos } from '../../quotes/domain/dinheiro.js';
 
 // RN06: só OS CONCLUIDA aceita pagamento. DEC-D16: valor = total, sem parciais.
@@ -9,15 +10,27 @@ export function criarRegistarPagamento({ pagamentoRepo, osRepo, provider, confir
     if (!os) throw erros.osNaoEncontrada();
 
     const isStaff = ['FUNCIONARIO', 'ADMINISTRADOR'].includes(utilizador.perfil);
-    if (!isStaff && os.utilizadorId !== utilizador.id) throw erros.naoAutorizado();
+    if (!isStaff && !mesmaId(os.utilizadorId, utilizador.id)) throw erros.naoAutorizado();
 
     if (os.estado !== 'CONCLUIDA') throw erros.osNaoElegivelPagamento(os.estado);
 
-    const METODOS_DIGITAIS = ['CARTAO', 'MOBILE_MONEY'];
+    const METODOS_DIGITAIS = [
+      'CARTAO',
+      'MOBILE_MONEY',
+      'MPESA',
+      'EMOLA',
+      'MKESH',
+      'CONTA_BANCARIA',
+    ];
     if (metodo === 'PRESENCIAL') {
       if (!isStaff) throw erros.naoAutorizado(); // RF13: presencial só staff
     } else if (!METODOS_DIGITAIS.includes(metodo)) {
-      throw new DomainError('VALIDACAO', 'Campo inválido: metodo. Use PRESENCIAL, CARTAO ou MOBILE_MONEY.', 422, { campo: 'metodo' });
+      throw new DomainError(
+        'VALIDACAO',
+        'Método inválido. Escolhe M-Pesa, e-Mola, mKesh ou transferência bancária.',
+        422,
+        { campo: 'metodo' },
+      );
     }
 
     // Saldo = total (DEC-D16). Pagamento digital: o SERVIDOR calcula — o browser não manda valor.

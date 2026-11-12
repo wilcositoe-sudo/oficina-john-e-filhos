@@ -10,6 +10,7 @@ export default function Veiculos() {
   const [modelo, setModelo] = useState('');
   const [ano, setAno] = useState('');
   const [aGuardar, setAGuardar] = useState(false);
+  const [idEdicao, setIdEdicao] = useState(null);
 
   async function carregar() {
     try {
@@ -22,36 +23,61 @@ export default function Veiculos() {
 
   useEffect(() => { carregar(); }, []);
 
-  async function criar(e) {
+  function limparFormulario() {
+    setMatricula('');
+    setMarca('');
+    setModelo('');
+    setAno('');
+    setIdEdicao(null);
+  }
+
+  function editar(veiculo) {
+    setIdEdicao(veiculo.id);
+    setMatricula(veiculo.matricula);
+    setMarca(veiculo.marca);
+    setModelo(veiculo.modelo);
+    setAno(veiculo.ano == null ? '' : String(veiculo.ano));
+    setErro('');
+  }
+
+  async function guardar(e) {
     e.preventDefault();
     setAGuardar(true);
     setErro('');
     try {
-      await api('POST', '/veiculos', {
-        body: {
-          matricula,
-          marca,
-          modelo,
-          ano: ano ? Number(ano) : undefined,
-        },
-      });
-      setMatricula(''); setMarca(''); setModelo(''); setAno('');
+      const body = {
+        matricula,
+        marca,
+        modelo,
+        ano: ano === '' ? null : Number(ano),
+      };
+      if (idEdicao) {
+        await api('PATCH', `/veiculos/${idEdicao}`, { body });
+      } else {
+        await api('POST', '/veiculos', { body });
+      }
+      limparFormulario();
       await carregar();
     } catch (err) {
-      setErro(err.message);
+      setErro(err.message || 'Não foi possível guardar o veículo.');
     } finally {
       setAGuardar(false);
     }
   }
 
-  if (veiculos === null) return <p>A carregar…</p>;
+  if (veiculos === null) {
+    return erro
+      ? <p className="erro" role="alert">Falha ao carregar veículos: {erro}</p>
+      : <p>A carregar…</p>;
+  }
 
   return (
     <section>
       <h2>Os meus veículos</h2>
 
-      <form className="cartao form-servico" onSubmit={criar}>
-        <h3>Registar veículo</h3>
+      <form className="cartao form-servico" onSubmit={guardar}>
+        <h3>{idEdicao ? 'Editar veículo' : 'Registar veículo'}</h3>
+        <p className="hint">Os veículos associados a ordens de serviço não podem ser apagados; atualize os dados para preservar o histórico.</p>
         <label htmlFor="matricula">Matrícula</label>
         <input id="matricula" value={matricula} onChange={(e) => setMatricula(e.target.value)} required placeholder="MTZ 123 AB" />
         <label htmlFor="marca">Marca</label>
@@ -62,8 +88,13 @@ export default function Veiculos() {
         <input id="ano" type="number" min="1950" max="2100" value={ano} onChange={(e) => setAno(e.target.value)} />
         {erro && <p className="erro" role="alert">{erro}</p>}
         <button className="botao" type="submit" disabled={aGuardar}>
-          {aGuardar ? 'A guardar…' : 'Registar veículo'}
+          {aGuardar ? 'A guardar…' : idEdicao ? 'Guardar alterações' : 'Registar veículo'}
         </button>
+        {idEdicao && (
+          <button type="button" className="botao botao-secundario" onClick={limparFormulario} disabled={aGuardar}>
+            Cancelar edição
+          </button>
+        )}
       </form>
 
       {veiculos.length === 0 ? (
@@ -71,7 +102,7 @@ export default function Veiculos() {
       ) : (
         <table className="tabela">
           <thead>
-            <tr><th>Matrícula</th><th>Marca</th><th>Modelo</th><th>Ano</th></tr>
+            <tr><th>Matrícula</th><th>Marca</th><th>Modelo</th><th>Ano</th><th>Ações</th></tr>
           </thead>
           <tbody>
             {veiculos.map((v) => (
@@ -80,6 +111,11 @@ export default function Veiculos() {
                 <td>{v.marca}</td>
                 <td>{v.modelo}</td>
                 <td>{v.ano ?? '—'}</td>
+                <td>
+                  <button type="button" className="botao botao-secundario" onClick={() => editar(v)} disabled={aGuardar}>
+                    Editar
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

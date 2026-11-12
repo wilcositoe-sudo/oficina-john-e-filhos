@@ -186,15 +186,21 @@ export function criarPgChatbotRepository() {
       return rows;
     },
 
-    async garantirConversa({ utilizadorId, clienteId, nome, email, telefone }) {
+    async garantirConversa({ utilizadorId, clienteId, nome, email, telefone, nova = false }) {
       const { rows: existentes } = await pool.query(
         `SELECT ${SELECT_CONVERSA}
          FROM chat_conversas
          WHERE utilizador_id = $1::bigint
            AND status NOT IN ('FECHADA','CONVERTIDA')
+           AND NOT EXISTS (
+             SELECT 1 FROM chat_conversa_ocultacoes o
+             WHERE o.conversa_id = chat_conversas.id
+               AND o.utilizador_id = $1::bigint
+           )
+           AND $2::boolean = FALSE
          ORDER BY atualizado_at DESC
          LIMIT 1`,
-        [utilizadorId],
+        [utilizadorId, Boolean(nova)],
       );
 
       if (existentes[0]) return mapConversa(existentes[0]);
@@ -228,7 +234,7 @@ export function criarPgChatbotRepository() {
       return rows[0] ? mapConversa(rows[0]) : null;
     },
 
-    async listarConversasStaff() {
+    async listarConversasStaff(utilizadorId) {
       const { rows } = await pool.query(
         `SELECT
            ${SELECT_CONVERSA},
@@ -240,14 +246,67 @@ export function criarPgChatbotRepository() {
              LIMIT 1
            ) AS ultima_mensagem_preview
          FROM chat_conversas
-         WHERE status IN ('EM_ATENDIMENTO','AGUARDANDO_FUNCIONARIO')
+         WHERE NOT EXISTS (
+           SELECT 1 FROM chat_conversa_ocultacoes o
+           WHERE o.conversa_id = chat_conversas.id
+             AND o.utilizador_id = $1::bigint
+         )
          ORDER BY nao_lidas_staff DESC, ultima_mensagem_at DESC`,
+        [utilizadorId],
       );
 
       return rows.map((r) => ({
         ...mapConversa(r),
         ultimaMensagemPreview: r.ultima_mensagem_preview,
       }));
+    },
+
+    async listarConversasCliente(utilizadorId) {
+      const { rows } = await pool.query(
+        `SELECT
+           ${SELECT_CONVERSA},
+           (
+             SELECT conteudo
+             FROM chat_mensagens m
+             WHERE m.conversa_id = chat_conversas.id
+             ORDER BY m.id DESC
+             LIMIT 1
+           ) AS ultima_mensagem_preview
+         FROM chat_conversas
+         WHERE utilizador_id = $1::bigint
+           AND NOT EXISTS (
+             SELECT 1 FROM chat_conversa_ocultacoes o
+             WHERE o.conversa_id = chat_conversas.id
+               AND o.utilizador_id = $1::bigint
+           )
+         ORDER BY ultima_mensagem_at DESC, id DESC`,
+        [utilizadorId],
+      );
+
+      return rows.map((r) => ({
+        ...mapConversa(r),
+        ultimaMensagemPreview: r.ultima_mensagem_preview,
+      }));
+    },
+
+    async conversaOcultada({ conversaId, utilizadorId }) {
+      const { rowCount } = await pool.query(
+        `SELECT 1
+         FROM chat_conversa_ocultacoes
+         WHERE conversa_id = $1::bigint AND utilizador_id = $2::bigint`,
+        [conversaId, utilizadorId],
+      );
+      return rowCount > 0;
+    },
+
+    async ocultarConversa({ conversaId, utilizadorId }) {
+      await pool.query(
+        `INSERT INTO chat_conversa_ocultacoes (conversa_id, utilizador_id)
+         VALUES ($1::bigint, $2::bigint)
+         ON CONFLICT (conversa_id, utilizador_id)
+         DO UPDATE SET ocultado_at = now()`,
+        [conversaId, utilizadorId],
+      );
     },
 
     async listarMensagens(conversaId) {
@@ -279,7 +338,12 @@ export function criarPgChatbotRepository() {
       await pool.query(
         `UPDATE chat_conversas
          SET ultima_mensagem_at = now(),
-             atualizado_at = now()
+             atualizado_at = now(),
+             expira_em = CASE
+               WHEN quer_diagnostico = FALSE AND os_id IS NULL
+                 THEN now() + INTERVAL '24 hours'
+               ELSE expira_em
+             END
          WHERE id = $1::bigint`,
         [conversaId],
       );
@@ -362,7 +426,7 @@ export function criarPgChatbotRepository() {
       const { rowCount } = await pool.query(`
         DELETE FROM chat_conversas
         WHERE expira_em IS NOT NULL
-          AND expira_em < now()
+          AND expira_em <= now()
           AND os_id IS NULL
           AND status <> 'CONVERTIDA'
       `);

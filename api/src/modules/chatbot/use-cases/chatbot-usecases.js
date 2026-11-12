@@ -82,7 +82,7 @@ async function listarDisponiveis(chatRepo) {
 }
 
 export function criarIniciarConversa({ chatRepo }) {
-  return async function iniciarConversa({ utilizador }) {
+  return async function iniciarConversa({ utilizador, nova = false }) {
     // Limpa conversas expiradas sem OS antes de reabrir/criar conversa.
     await chatRepo.apagarExpiradas();
 
@@ -94,6 +94,7 @@ export function criarIniciarConversa({ chatRepo }) {
       nome: cliente?.nome ?? utilizador.nome,
       email: cliente?.email ?? utilizador.email,
       telefone: cliente?.telefone ?? utilizador.telefone,
+      nova,
     });
 
     let mensagens = await chatRepo.listarMensagens(conversa.id);
@@ -177,6 +178,12 @@ export function criarEnviarMensagemCliente({ chatRepo }) {
       conversa.status === 'AGUARDANDO_FUNCIONARIO'
     ) {
       await chatRepo.incrementarNaoLidasStaff(conversa.id);
+      if (conversa.querDiagnostico === false) {
+        await chatRepo.atualizarConversa({
+          id: conversa.id,
+          expiraEm: expiraEm24h(),
+        });
+      }
 
       return {
         conversa: await chatRepo.obterConversa(conversa.id),
@@ -204,12 +211,12 @@ export function criarEnviarMensagemCliente({ chatRepo }) {
 
     const atualizar = { ...(resultado.atualizar || {}) };
 
-    // ★ Fase 3C — decisão de diagnóstico e expiração.
-    if (atualizar.querDiagnostico === false) {
+    const querDiagnostico = atualizar.querDiagnostico ?? conversa.querDiagnostico;
+    if (querDiagnostico === false) {
       atualizar.expiraEm = expiraEm24h();
     }
 
-    if (atualizar.querDiagnostico === true) {
+    if (querDiagnostico === true) {
       atualizar.expiraEm = null;
     }
 
@@ -257,6 +264,13 @@ export function criarEnviarMensagemCliente({ chatRepo }) {
       await chatRepo.incrementarNaoLidasStaff(conversa.id);
     }
 
+    if (querDiagnostico === false) {
+      await chatRepo.atualizarConversa({
+        id: conversa.id,
+        expiraEm: expiraEm24h(),
+      });
+    }
+
     return {
       conversa: await chatRepo.obterConversa(conversa.id),
       mensagens: await chatRepo.listarMensagens(conversa.id),
@@ -267,11 +281,15 @@ export function criarEnviarMensagemCliente({ chatRepo }) {
 
 export function criarObterConversa({ chatRepo }) {
   return async function obterConversa({ id, utilizador, isStaff }) {
+    await chatRepo.apagarExpiradas();
     const conversa = await chatRepo.obterConversa(id);
     if (!conversa) throw erros.contaInternaInvalida('Conversa não encontrada.');
 
     if (!isStaff && String(conversa.utilizadorId) !== String(utilizador.id)) {
       throw erros.naoAutorizado();
+    }
+    if (await chatRepo.conversaOcultada({ conversaId: id, utilizadorId: utilizador.id })) {
+      throw erros.contaInternaInvalida('Conversa não encontrada.');
     }
 
     if (isStaff) await chatRepo.zerarNaoLidasStaff(conversa.id);
@@ -527,9 +545,28 @@ export function criarDefinirChegadaOficina({ chatRepo }) {
 }
 
 export function criarListarConversasStaff({ chatRepo }) {
-  return async function listarConversasStaff() {
+  return async function listarConversasStaff({ utilizador }) {
     await chatRepo.apagarExpiradas();
-    return chatRepo.listarConversasStaff();
+    return chatRepo.listarConversasStaff(utilizador.id);
+  };
+}
+
+export function criarListarConversasCliente({ chatRepo }) {
+  return async function listarConversasCliente({ utilizador }) {
+    await chatRepo.apagarExpiradas();
+    return chatRepo.listarConversasCliente(utilizador.id);
+  };
+}
+
+export function criarOcultarConversa({ chatRepo }) {
+  return async function ocultarConversa({ conversaId, utilizador, isStaff }) {
+    const conversa = await chatRepo.obterConversa(conversaId);
+    if (!conversa) throw erros.contaInternaInvalida('Conversa não encontrada.');
+    if (!isStaff && String(conversa.utilizadorId) !== String(utilizador.id)) {
+      throw erros.naoAutorizado();
+    }
+
+    await chatRepo.ocultarConversa({ conversaId, utilizadorId: utilizador.id });
   };
 }
 
@@ -543,7 +580,7 @@ export function criarAtenderConversaStaff({ chatRepo }) {
       status: 'EM_ATENDIMENTO',
       atendidoPor: utilizador.id,
       etapa: 'HUMANO',
-      expiraEm: null,
+      expiraEm: conversa.querDiagnostico === false ? expiraEm24h() : null,
     });
 
     await chatRepo.criarMensagem({
@@ -556,6 +593,12 @@ export function criarAtenderConversaStaff({ chatRepo }) {
 
     await chatRepo.zerarNaoLidasStaff(conversaId);
     await chatRepo.incrementarNaoLidasCliente(conversaId);
+    if (conversa.querDiagnostico === false) {
+      await chatRepo.atualizarConversa({
+        id: conversaId,
+        expiraEm: expiraEm24h(),
+      });
+    }
 
     return {
       conversa: await chatRepo.obterConversa(conversaId),
@@ -577,7 +620,7 @@ export function criarResponderStaff({ chatRepo }) {
       status: 'EM_ATENDIMENTO',
       atendidoPor: conversa.atendidoPor ?? utilizador.id,
       etapa: 'HUMANO',
-      expiraEm: null,
+      expiraEm: conversa.querDiagnostico === false ? expiraEm24h() : null,
     });
 
     await chatRepo.criarMensagem({
@@ -590,6 +633,12 @@ export function criarResponderStaff({ chatRepo }) {
 
     await chatRepo.zerarNaoLidasStaff(conversaId);
     await chatRepo.incrementarNaoLidasCliente(conversaId);
+    if (conversa.querDiagnostico === false) {
+      await chatRepo.atualizarConversa({
+        id: conversaId,
+        expiraEm: expiraEm24h(),
+      });
+    }
 
     return {
       conversa: await chatRepo.obterConversa(conversaId),
@@ -687,11 +736,11 @@ export function criarDefinirDecisaoDiagnosticoStaff({ chatRepo }) {
       };
     }
 
-    // Cliente não quer diagnóstico: guarda por 24h.
+    // Sem diagnóstico, a retenção de 24h é renovada a cada mensagem.
     await chatRepo.atualizarConversa({
       id: conversaId,
       querDiagnostico: false,
-      expiraEm: expiraEm24h(),
+      expiraEm: null,
       status: 'AGUARDANDO_FUNCIONARIO',
       etapa: 'SEM_DIAGNOSTICO',
       atendidoPor: conversa.atendidoPor ?? utilizador.id,
@@ -709,6 +758,10 @@ export function criarDefinirDecisaoDiagnosticoStaff({ chatRepo }) {
 
     await chatRepo.zerarNaoLidasStaff(conversaId);
     await chatRepo.incrementarNaoLidasCliente(conversaId);
+    await chatRepo.atualizarConversa({
+      id: conversaId,
+      expiraEm: expiraEm24h(),
+    });
 
     return {
       conversa: await chatRepo.obterConversa(conversaId),
@@ -728,8 +781,9 @@ export function criarFecharConversaStaff({ chatRepo }) {
       );
     }
 
-    // Se não tem OS, guarda por 24h. Se tem OS, nunca expira.
-    const expiraEm = conversa.osId ? null : expiraEm24h();
+    const expiraEm = conversa.querDiagnostico === false && !conversa.osId
+      ? expiraEm24h()
+      : null;
 
     await chatRepo.atualizarConversa({
       id: conversaId,
@@ -749,6 +803,12 @@ export function criarFecharConversaStaff({ chatRepo }) {
     });
 
     await chatRepo.incrementarNaoLidasCliente(conversaId);
+    if (expiraEm) {
+      await chatRepo.atualizarConversa({
+        id: conversaId,
+        expiraEm: expiraEm24h(),
+      });
+    }
 
     return {
       conversa: await chatRepo.obterConversa(conversaId),
@@ -758,7 +818,11 @@ export function criarFecharConversaStaff({ chatRepo }) {
 }
 
 export function criarConverterLeadEmOs({ chatRepo, criarOS, osRepo }) {
-  return async function converterLeadEmOs({ conversaId, utilizador }) {
+  return async function converterLeadEmOs({
+    conversaId,
+    utilizador,
+    descricaoProblema,
+  }) {
     const conversa = await chatRepo.obterConversa(conversaId);
     if (!conversa) throw erros.contaInternaInvalida('Conversa não encontrada.');
 
@@ -770,8 +834,14 @@ export function criarConverterLeadEmOs({ chatRepo, criarOS, osRepo }) {
       throw erros.contaInternaInvalida('Falta veículo na conversa.');
     }
 
-    if (!conversa.problema) {
+    const problema = String(descricaoProblema ?? conversa.problema ?? '').trim();
+    if (!problema) {
       throw erros.contaInternaInvalida('Falta problema reportado.');
+    }
+    if (problema.length < 10) {
+      throw erros.contaInternaInvalida(
+        'A descrição do problema deve ter pelo menos 10 caracteres.',
+      );
     }
 
     if (!conversa.email) {
@@ -793,18 +863,20 @@ export function criarConverterLeadEmOs({ chatRepo, criarOS, osRepo }) {
     const os = await criarOS({
       emailCliente: conversa.email,
       veiculoId: Number(conversa.veiculoId),
-      descricaoProblema: conversa.problema,
+      descricaoProblema: problema,
       utilizador,
     });
 
     // Defesa: se porventura existir modalidadeEntrega no lead, pré-preenche a OS.
     // No fluxo 3B/3C normal NÃO dispara, porque a entrega final é escolhida em CONCLUIDA.
     if (conversa.modalidadeEntrega) {
-      await osRepo.definirEntrega({
+      const atualizada = await osRepo.definirEntrega({
         ordemId: os.id,
+        estadoEsperado: os.estado,
         modalidade: conversa.modalidadeEntrega,
         taxaEntrega: Number(conversa.taxaEntrega ?? 0),
       });
+      if (!atualizada) throw erros.transicaoInvalida(os.estado);
     }
 
     await chatRepo.atualizarConversa({

@@ -1,4 +1,5 @@
 import { erros } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 
 // RF14: recibo só após confirmação (RN06). Reimpressão devolve o mesmo documento.
 export function criarObterRecibo({ pagamentoRepo, osRepo }) {
@@ -9,7 +10,7 @@ export function criarObterRecibo({ pagamentoRepo, osRepo }) {
     const os = await osRepo.procurarPorId(pagamento.ordemId);
     if (!os) throw erros.osNaoEncontrada();
     const isStaff = ['FUNCIONARIO', 'ADMINISTRADOR'].includes(utilizador.perfil);
-    if (!isStaff && os.utilizadorId !== utilizador.id) throw erros.naoAutorizado();
+    if (!isStaff && !mesmaId(os.utilizadorId, utilizador.id)) throw erros.naoAutorizado();
 
     if (pagamento.estado !== 'CONFIRMADO') throw erros.pagamentoNaoConfirmado();
 

@@ -1,9 +1,8 @@
-import { passwordHasher } from '../domain/password-hasher.js';
 import { validarDadosRegisto } from '../domain/validacoes.js';
 import { erros } from '../../../shared/errors/domain-error.js';
 
 // RF20: registo de cliente — identificador gerado, contacto único, senha com hash.
-export function criarRegistarCliente({ utilizadorRepo, clienteRepo }) {
+export function criarRegistarCliente({ utilizadorRepo, clienteRepo, passwordHasher }) {
   return async function registarCliente({ nome, email, telefone, senha }) {
     const dados = validarDadosRegisto({ nome, email, telefone, senha });
 

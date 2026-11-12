@@ -38,6 +38,37 @@ export function criarPgVeiculoRepository() {
       return rows[0] ? map(rows[0]) : null;
     },
 
+    async atualizar(dados) {
+      const { id, utilizadorId, matricula, marca, modelo, ano } = dados;
+      const values = [id, utilizadorId];
+      const updates = [];
+      const fields = [
+        ['matricula', matricula],
+        ['marca', marca],
+        ['modelo', modelo],
+        ['ano', ano],
+      ];
+
+      for (const [column, value] of fields) {
+        if (!Object.hasOwn(dados, column)) continue;
+        values.push(value);
+        updates.push(`${column} = $${values.length}`);
+      }
+
+      if (updates.length === 0) return this.procurarPorId(id);
+      const { rows } = await pool.query(
+        `UPDATE veiculos v
+         SET ${updates.join(', ')}, updated_at = now()
+         FROM clientes c
+         WHERE v.id = $1
+           AND c.id = v.cliente_id
+           AND c.utilizador_id = $2
+         RETURNING v.id, v.cliente_id, v.matricula, v.marca, v.modelo, v.ano, $2::bigint AS utilizador_id`,
+        values,
+      );
+      return rows[0] ? map(rows[0]) : null;
+    },
+
     async listarPorUtilizador(utilizadorId) {
       const { rows } = await pool.query(
         `${SELECT_BASE} WHERE u.id = $1 ORDER BY v.created_at DESC`,

@@ -1,9 +1,8 @@
 import { erros } from '../../../shared/errors/domain-error.js';
-import { passwordHasher } from '../../auth/domain/password-hasher.js';
 
 const PERFIS_VALIDOS = ['FUNCIONARIO', 'ADMINISTRADOR', 'MECANICO'];
 
-export function criarCriarContaInterna({ utilizadorRepo }) {
+export function criarCriarContaInterna({ utilizadorRepo, passwordHasher }) {
   return async function criarContaInterna({ nome, email, senha, perfil, utilizador }) {
     if (utilizador.perfil !== 'ADMINISTRADOR') throw erros.naoAutorizado();
 

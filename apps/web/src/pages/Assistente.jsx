@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useFeedback } from '../components/Feedback.jsx';
+import ChatOS from '../components/ChatOS.jsx';
 import {
   OFICINA_WEB,
   distanciaKm,
@@ -16,6 +17,19 @@ const fmtHora = (iso) =>
       })
     : '';
 
+function atualizarMensagensSeMudaram(setMensagens, novasMensagens) {
+  setMensagens((atuais) => {
+    const novas = novasMensagens ?? [];
+    if (
+      atuais.length === novas.length &&
+      atuais.at(-1)?.id === novas.at(-1)?.id
+    ) {
+      return atuais;
+    }
+    return novas;
+  });
+}
+
 const OPCOES_CHEGADA = [
   {
     label: '🚗 Vou levar eu próprio à oficina',
@@ -27,14 +41,17 @@ const OPCOES_CHEGADA = [
   },
 ];
 
-export default function Assistente() {
+export default function Assistente({ utilizador }) {
   const feedback = useFeedback();
 
+  const [conversas, setConversas] = useState([]);
   const [conversa, setConversa] = useState(null);
+  const [ordemSelecionada, setOrdemSelecionada] = useState(null);
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [erroSincronizacao, setErroSincronizacao] = useState('');
 
   const [modalLocal, setModalLocal] = useState(false);
   const [aObterLocal, setAObterLocal] = useState(false);
@@ -50,6 +67,43 @@ export default function Assistente() {
 
   const fimRef = useRef(null);
   const iniciadoRef = useRef(false);
+  const enviandoRef = useRef(false);
+  const mensagemTemporariaRef = useRef(0);
+  const conversaSelecionadaRef = useRef(null);
+
+  function definirConversa(novaConversa) {
+    conversaSelecionadaRef.current = novaConversa;
+    setConversa(novaConversa);
+  }
+
+  const carregarConversas = useCallback(async () => {
+    const [chatbot, ordens] = await Promise.all([
+      api('GET', '/chatbot/minhas-conversas'),
+      api('GET', '/mensagens/conversas'),
+    ]);
+    const inbox = [
+      ...(Array.isArray(chatbot) ? chatbot : []).map((item) => ({
+        ...item,
+        tipo: 'CHATBOT',
+        titulo: item.nomeCliente || 'Conversa com a oficina',
+        preview: item.ultimaMensagemPreview || item.problema || 'Nova conversa',
+        atualizadoAt: item.ultimaMensagemAt || item.atualizadoAt,
+        naoLidas: item.naoLidasCliente ?? 0,
+      })),
+      ...(Array.isArray(ordens) ? ordens : []),
+    ];
+    inbox.sort((a, b) => new Date(b.atualizadoAt ?? 0) - new Date(a.atualizadoAt ?? 0));
+    setConversas(inbox);
+    if (
+      conversaSelecionadaRef.current &&
+      !inbox.some((item) => item.tipo === 'CHATBOT' && (
+        String(item.id) === String(conversaSelecionadaRef.current.id)
+      ))
+    ) {
+      definirConversa(null);
+      setMensagens([]);
+    }
+  }, []);
 
   useEffect(() => {
     // Evita duplo init no StrictMode do React em desenvolvimento.
@@ -59,8 +113,9 @@ export default function Assistente() {
     (async () => {
       try {
         const r = await api('POST', '/chatbot/iniciar');
-        setConversa(r.conversa);
+        definirConversa(r.conversa);
         setMensagens(r.mensagens ?? []);
+        await carregarConversas();
       } catch (e) {
         feedback.mostrarErro(
           'Não foi possível iniciar o assistente',
@@ -70,7 +125,129 @@ export default function Assistente() {
         setCarregando(false);
       }
     })();
-  }, []);
+  }, [carregarConversas, feedback]);
+
+  useEffect(() => {
+    let ativo = true;
+    const sincronizarLista = async () => {
+      try {
+        await carregarConversas();
+      } catch {
+        if (ativo) setErroSincronizacao('Não foi possível atualizar a lista de conversas.');
+      }
+    };
+    const intervalo = window.setInterval(() => void sincronizarLista(), 5000);
+    const aoFocar = () => void sincronizarLista();
+    window.addEventListener('focus', aoFocar);
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      window.removeEventListener('focus', aoFocar);
+    };
+  }, [carregarConversas]);
+
+  async function abrirConversa(item) {
+    if (item.tipo === 'OS') {
+      definirConversa(null);
+      setMensagens([]);
+      setOrdemSelecionada(item);
+      return;
+    }
+
+    try {
+      const resultado = await api('GET', `/chatbot/conversas/${item.id}`);
+      setOrdemSelecionada(null);
+      definirConversa(resultado.conversa);
+      setMensagens(resultado.mensagens ?? []);
+      await carregarConversas();
+    } catch (error) {
+      feedback.mostrarErro('Falha ao abrir conversa', error.message);
+      await carregarConversas();
+    }
+  }
+
+  async function iniciarNovaConversa() {
+    try {
+      const resultado = await api('POST', '/chatbot/iniciar', { body: { nova: true } });
+      setOrdemSelecionada(null);
+      definirConversa(resultado.conversa);
+      setMensagens(resultado.mensagens ?? []);
+      await carregarConversas();
+    } catch (error) {
+      feedback.mostrarErro('Não foi possível iniciar uma conversa', error.message);
+    }
+  }
+
+  async function ocultarConversa(event, item) {
+    event.stopPropagation();
+    const confirmado = await feedback.confirmar({
+      titulo: 'Remover conversa',
+      mensagem: 'Remover esta conversa apenas da tua lista? O outro participante continuará a vê-la.',
+      textoConfirmar: 'Remover',
+      perigo: true,
+    });
+    if (!confirmado) return;
+    try {
+      const path = item.tipo === 'OS'
+        ? `/mensagens/conversas/${item.id}`
+        : `/chatbot/conversas/${item.id}`;
+      await api('DELETE', path);
+      if (String(conversa?.id) === String(item.id) || String(ordemSelecionada?.id) === String(item.id)) {
+        definirConversa(null);
+        setMensagens([]);
+        setOrdemSelecionada(null);
+      }
+      await carregarConversas();
+    } catch (error) {
+      feedback.mostrarErro('Não foi possível remover a conversa', error.message);
+    }
+  }
+
+  useEffect(() => {
+    if (!conversa?.id) return undefined;
+    let ativo = true;
+    let sincronizando = false;
+
+    async function sincronizar() {
+      if (
+        document.visibilityState !== 'visible' ||
+        sincronizando ||
+        enviandoRef.current
+      ) {
+        return;
+      }
+
+      sincronizando = true;
+      try {
+        const resultado = await api('GET', `/chatbot/conversas/${conversa.id}`);
+        if (!ativo) return;
+        definirConversa(resultado.conversa);
+        atualizarMensagensSeMudaram(setMensagens, resultado.mensagens);
+        setErroSincronizacao('');
+      } catch (erro) {
+        if (ativo) setErroSincronizacao(erro.message);
+      } finally {
+        sincronizando = false;
+      }
+    }
+
+    const intervalo = window.setInterval(() => {
+      void sincronizar();
+    }, 2500);
+    const aoFocar = () => void sincronizar();
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === 'visible') void sincronizar();
+    };
+    window.addEventListener('focus', aoFocar);
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      window.removeEventListener('focus', aoFocar);
+      document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+    };
+  }, [conversa?.id]);
 
   useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -80,14 +257,15 @@ export default function Assistente() {
     const conteudo = String(msgTexto ?? '').trim();
     if (!conteudo || enviando) return;
 
+    enviandoRef.current = true;
     setEnviando(true);
     setTexto('');
 
     const otimista = {
-      id: `temp-${Date.now()}`,
+      id: `temp-${++mensagemTemporariaRef.current}`,
       remetente: 'CLIENTE',
       conteudo,
-      criadoAt: new Date().toISOString(),
+      criadoAt: null,
       metadata: null,
     };
 
@@ -101,13 +279,15 @@ export default function Assistente() {
         },
       });
 
-      setConversa(r.conversa);
+      definirConversa(r.conversa);
       setMensagens(r.mensagens ?? []);
+      await carregarConversas();
     } catch (e) {
       setMensagens((m) => m.filter((x) => x.id !== otimista.id));
       setTexto(conteudo);
       feedback.mostrarErro('Falha ao enviar mensagem', e.message);
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   }
@@ -131,7 +311,7 @@ export default function Assistente() {
     );
 
     if (r.ok) {
-      setConversa(r.data.conversa);
+      definirConversa(r.data.conversa);
       setMensagens(r.data.mensagens ?? []);
     }
   }
@@ -195,7 +375,7 @@ export default function Assistente() {
       );
 
       if (r.ok) {
-        setConversa(r.data.conversa);
+        definirConversa(r.data.conversa);
         setMensagens(r.data.mensagens ?? []);
       }
 
@@ -205,7 +385,7 @@ export default function Assistente() {
     if (modalidade === 'RECOLHA_DOMICILIO') {
       setModalLocal(true);
 
-      if (!local.lat || !local.lng) {
+      if (local.lat == null || local.lng == null) {
         obterLocalizacao();
       }
     }
@@ -214,7 +394,7 @@ export default function Assistente() {
   async function confirmarRecolha() {
     if (!conversa) return;
 
-    if (!local.lat || !local.lng) {
+    if (local.lat == null || local.lng == null) {
       feedback.mostrarErro(
         'Sem localização',
         'Ativa a localização antes de confirmar a recolha.',
@@ -258,7 +438,7 @@ export default function Assistente() {
 
     if (r.ok) {
       setModalLocal(false);
-      setConversa(r.data.conversa);
+      definirConversa(r.data.conversa);
       setMensagens(r.data.mensagens ?? []);
     }
   }
@@ -313,40 +493,118 @@ export default function Assistente() {
   );
 
   return (
-    <section>
-      <h2>💬 Assistente da Oficina</h2>
+    <section className="pagina-chat">
+      <h2>💬 Conversas</h2>
       <p className="subtitulo">
-        Fala com o assistente virtual. Se precisar, encaminhamos para um
-        funcionário com todo o histórico.
+        Fala com o assistente ou acompanha as conversas das tuas ordens de serviço.
       </p>
 
-      {emAtendimentoHumano && !conversaEncerrada && (
-        <p className="info">
-          👤 Estás em atendimento humano. Podes continuar a escrever aqui.
-        </p>
-      )}
+      <div className="chat-inbox">
+        <aside className="cartao chat-inbox-sidebar" aria-label="Lista de conversas">
+          <div className="chat-inbox-sidebar-heading">
+            <div>
+              <span className="landing-section-kicker">Caixa de entrada</span>
+              <h3>As tuas conversas</h3>
+            </div>
+            <button type="button" className="botao chat-nova-conversa" onClick={iniciarNovaConversa}>
+              + Nova conversa
+            </button>
+          </div>
 
-      {decisaoPendente && !conversaEncerrada && (
-        <p className="info">
-          ⏳ A aguardar que um funcionário confirme se queres diagnóstico.
-        </p>
-      )}
+          {conversas.length === 0 ? (
+            <p className="vazio chat-inbox-empty">Ainda não há conversas guardadas.</p>
+          ) : (
+            <ul className="chat-inbox-lista">
+              {conversas.map((item) => {
+                const ativa = item.tipo === 'OS'
+                  ? String(ordemSelecionada?.id) === String(item.id)
+                  : String(conversa?.id) === String(item.id) && !ordemSelecionada;
+                const hora = item.atualizadoAt
+                  ? new Date(item.atualizadoAt).toLocaleDateString('pt-PT', {
+                      timeZone: 'Africa/Maputo',
+                      day: '2-digit',
+                      month: '2-digit',
+                    })
+                  : '';
+                return (
+                  <li key={`${item.tipo}-${item.id}`} className={`chat-inbox-item ${ativa ? 'ativa' : ''}`}>
+                    <button type="button" className="chat-inbox-select" onClick={() => abrirConversa(item)}>
+                      <span className={`chat-avatar ${item.tipo === 'OS' ? 'chat-avatar-os' : ''}`}>
+                        {item.tipo === 'OS' ? 'OS' : (item.titulo?.trim()?.[0] ?? 'C').toUpperCase()}
+                      </span>
+                      <span className="chat-inbox-item-copy">
+                        <strong>{item.tipo === 'OS' ? item.numeroOS : item.titulo}</strong>
+                        <small>{item.preview}</small>
+                      </span>
+                      <span className="chat-inbox-item-meta">
+                        <small>{hora}</small>
+                        {item.naoLidas > 0 && <span className="chat-unread">{item.naoLidas}</span>}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-inbox-delete"
+                      aria-label={`Remover ${item.tipo === 'OS' ? `conversa da ${item.numeroOS}` : 'conversa'} da tua lista`}
+                      title="Remover apenas da tua lista"
+                      onClick={(event) => ocultarConversa(event, item)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="chat-inbox-retencao">
+            Conversas sem diagnóstico expiram 24 horas após a última mensagem. As restantes ficam guardadas até as removeres.
+          </p>
+        </aside>
 
-      {semDiagnostico && !conversaEncerrada && (
-        <p className="info">
-          ❌ Esta conversa está marcada como sem diagnóstico. Será eliminada em
-          24 horas se não for convertida em OS.
-        </p>
-      )}
+        <div className="chat-inbox-main" role="region" aria-label="Conversa selecionada">
+          {ordemSelecionada ? (
+            <ChatOS
+              ordemId={ordemSelecionada.id}
+              titulo={ordemSelecionada.numeroOS}
+              perfil={utilizador?.perfil ?? 'CLIENTE'}
+              aoAtualizar={carregarConversas}
+            />
+          ) : !conversa ? (
+            <div className="cartao chat-inbox-placeholder">
+              <span aria-hidden="true">💬</span>
+              <h3>Escolhe uma conversa</h3>
+              <p>As mensagens e atualizações das tuas ordens aparecem aqui.</p>
+            </div>
+          ) : (
+            <>
+              {emAtendimentoHumano && !conversaEncerrada && (
+                <p className="info">👤 Estás em atendimento humano. Podes continuar a escrever aqui.</p>
+              )}
+              {decisaoPendente && !conversaEncerrada && (
+                <p className="info">⏳ A aguardar que um funcionário confirme se queres diagnóstico.</p>
+              )}
+              {semDiagnostico && !conversaEncerrada && (
+                <p className="info">
+                  ❌ Esta conversa será removida automaticamente 24 horas após a última mensagem.
+                  {conversa.expiraEm ? ` Expira em ${new Date(conversa.expiraEm).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo' })}.` : ''}
+                </p>
+              )}
+              {conversaEncerrada && (
+                <p className="vazio">Esta conversa foi encerrada ou convertida em ordem de serviço.</p>
+              )}
+              {erroSincronizacao && (
+                <p className="erro" role="status">
+                  Não foi possível sincronizar a conversa. A tentar novamente: {erroSincronizacao}
+                </p>
+              )}
 
-      {conversaEncerrada && (
-        <p className="vazio">
-          Esta conversa foi encerrada ou convertida em ordem de serviço.
-        </p>
-      )}
-
-      <div className="cartao chat-assistente">
-        <div className="chat-mensagens chat-assistente-mensagens">
+              <div className="cartao chat-assistente">
+        <div
+          className="chat-mensagens chat-assistente-mensagens"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Histórico da conversa"
+        >
           {mensagens.map((m) => (
             <div
               key={m.id}
@@ -498,6 +756,10 @@ export default function Assistente() {
             {enviando ? 'A enviar…' : 'Enviar'}
           </button>
         </form>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {modalLocal && (
@@ -517,7 +779,7 @@ export default function Assistente() {
               oficina. Depois preenche bairro, quarteirão e número da casa.
             </p>
 
-            {!local.lat || !local.lng ? (
+            {local.lat == null || local.lng == null ? (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <button
                   className="botao"
@@ -627,8 +889,8 @@ export default function Assistente() {
                 onClick={confirmarRecolha}
                 disabled={
                   aObterLocal ||
-                  !local.lat ||
-                  !local.lng ||
+                  local.lat == null ||
+                  local.lng == null ||
                   !enderecoCompleto
                 }
               >

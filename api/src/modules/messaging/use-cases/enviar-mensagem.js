@@ -1,4 +1,5 @@
 import { DomainError, erros } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 
 const LIMITE_CARACTERES = 2000;
 
@@ -12,7 +13,11 @@ export function criarEnviarMensagem({ mensagemRepo, osRepo }) {
     if (!os) throw erros.osNaoEncontrada();
 
     const isStaff = ['FUNCIONARIO', 'ADMINISTRADOR'].includes(remetente.perfil);
-    if (!isStaff && os.utilizadorId !== remetente.id) throw erros.naoAutorizado();
+    const isMecanicoResponsavel = remetente.perfil === 'MECANICO'
+      && mesmaId(os.mecanicoId, remetente.id);
+    if (!isStaff && !isMecanicoResponsavel && !mesmaId(os.utilizadorId, remetente.id)) {
+      throw erros.naoAutorizado();
+    }
 
     const texto = conteudo?.trim() ?? '';
     if (texto.length === 0) throw erroValidacao('conteudo', 'A mensagem não pode ser vazia.');

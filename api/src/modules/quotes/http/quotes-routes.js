@@ -1,53 +1,39 @@
 import { Router } from 'express';
 import { asyncRoute } from '../../../shared/http/async-route.js';
-import { criarPgOrcamentoRepository } from '../adapters/pg-orcamento-repository.js';
-import { criarPgVeiculoRepository } from '../../vehicles/adapters/pg-veiculo-repository.js';
-import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
-import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
-import { createRequireAuth, createRequireRole } from '../../auth/http/session-middleware.js';
-import { criarSolicitarOrcamento } from '../use-cases/solicitar-orcamento.js';
-import { criarListarOrcamentosCliente } from '../use-cases/listar-orcamentos-cliente.js';
-import { criarListarOrcamentosStaff } from '../use-cases/listar-orcamentos-staff.js';
-import { criarResponderOrcamento } from '../use-cases/responder-orcamento.js';
-import { criarDecidirOrcamento } from '../use-cases/decidir-orcamento.js';
 
-export function createQuotesRouter() {
+export function createQuotesRouter({
+  casosDeUso,
+  requireAuth,
+  requireRole,
+}) {
   const router = Router();
-  const orcamentoRepo = criarPgOrcamentoRepository();
-  const requireAuth = createRequireAuth({
-    sessaoRepo: criarPgSessaoRepository(),
-    utilizadorRepo: criarPgUtilizadorRepository(),
-  });
-  const staff = [requireAuth, createRequireRole('FUNCIONARIO', 'ADMINISTRADOR')];
-  const cliente = [requireAuth, createRequireRole('CLIENTE')];
+  const staff = [requireAuth, requireRole('FUNCIONARIO', 'ADMINISTRADOR')];
+  const cliente = [requireAuth, requireRole('CLIENTE')];
 
-  const solicitar = criarSolicitarOrcamento({
-    orcamentoRepo,
-    veiculoRepo: criarPgVeiculoRepository(),
-  });
+  const { solicitar, listarCliente, listarStaff, responder, decidir } = casosDeUso;
 
   router.post('/orcamentos', ...cliente, asyncRoute(async (req, res) => {
-    const resultado = await solicitar({ utilizadorId: req.utilizador.id, ...(req.body ?? {}) });
-    res.status(201).json({ data: resultado });
+    res.status(201).json({
+      data: await solicitar({
+        utilizadorId: req.utilizador.id,
+        ...(req.body ?? {}),
+      }),
+    });
   }));
 
   router.get('/orcamentos/meu', ...cliente, asyncRoute(async (req, res) => {
-    const listar = criarListarOrcamentosCliente({ orcamentoRepo });
-    res.json({ data: await listar({ utilizadorId: req.utilizador.id }) });
+    res.json({ data: await listarCliente({ utilizadorId: req.utilizador.id }) });
   }));
 
   router.get('/orcamentos', ...staff, asyncRoute(async (req, res) => {
-    const listar = criarListarOrcamentosStaff({ orcamentoRepo });
-    res.json({ data: await listar() });
+    res.json({ data: await listarStaff() });
   }));
 
   router.post('/orcamentos/:id/resposta', ...staff, asyncRoute(async (req, res) => {
-    const responder = criarResponderOrcamento({ orcamentoRepo });
     res.json({ data: await responder({ id: req.params.id, ...(req.body ?? {}) }) });
   }));
 
   router.post('/orcamentos/:id/decisao', ...cliente, asyncRoute(async (req, res) => {
-    const decidir = criarDecidirOrcamento({ orcamentoRepo });
     res.json({ data: await decidir({ id: req.params.id, utilizador: req.utilizador, ...(req.body ?? {}) }) });
   }));
 

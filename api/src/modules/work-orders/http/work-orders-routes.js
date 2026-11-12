@@ -1,58 +1,36 @@
 import { Router } from 'express';
 import { asyncRoute } from '../../../shared/http/async-route.js';
-
-// === Repositórios (adapters reais do projeto) ===
-import { criarPgOsRepository } from '../adapters/pg-os-repository.js';
-import { criarPgClienteRepository } from '../../auth/adapters/pg-cliente-repository.js';
-import { criarPgVeiculoRepository } from '../../vehicles/adapters/pg-veiculo-repository.js';
-import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
-import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
-
-// === Use-cases EXISTENTES (F7/F10) ===
-import { criarCriarOS } from '../use-cases/criar-os.js';
-import { criarListarOsStaff } from '../use-cases/listar-os-staff.js';
-import { criarDetalheOs } from '../use-cases/detalhe-os.js';
-import { criarTransitarOs } from '../use-cases/transitar-os.js';
-import { criarAdicionarServico } from '../use-cases/adicionar-servico.js';
-import { criarAdicionarPeca } from '../use-cases/adicionar-peca.js';
-import { criarListarHistoricoOs } from '../use-cases/listar-historico-os.js';
-import { criarListarMinhasOs } from '../use-cases/listar-minhas-os.js';
-import { criarEscolherEntrega } from '../use-cases/escolher-entrega.js';
-
-// === Use-cases NOVOS (F12 — fluxo Mecânico / Funcionário / Cliente) ===
-import { criarAtribuirMecanico } from '../use-cases/atribuir-mecanico.js';
-import { criarSubmeterDiagnostico } from '../use-cases/submeter-diagnostico.js';
-import { criarPrecificarOS } from '../use-cases/precificar-os.js';
-import { criarDecisaoCliente } from '../use-cases/decisao-cliente.js';
-import { criarValidarRevisao } from '../use-cases/validar-revisao.js';
-// ★ Fase 2A — ações exclusivas do mecânico
-import { criarIniciarDiagnostico } from '../use-cases/iniciar-diagnostico.js';
-import { criarConcluirReparacao } from '../use-cases/concluir-reparacao.js';
-
-// === Middlewares de autenticação/autorização ===
-import { createRequireAuth, createRequireRole } from '../../auth/http/session-middleware.js';
-
-export function createWorkOrdersRouter() {
+export function createWorkOrdersRouter(dependencies) {
   const router = Router();
-
-  // ------------------------------------------------------------
-  // Repositórios (instanciados UMA vez por processo)
-  // ------------------------------------------------------------
-  const osRepo = criarPgOsRepository();
-  const clienteRepo = criarPgClienteRepository();
-  const veiculoRepo = criarPgVeiculoRepository();
-  const utilizadorRepo = criarPgUtilizadorRepository();
-
-  // ------------------------------------------------------------
-  // Middlewares de autorização por perfil
-  // ------------------------------------------------------------
-  const requireAuth = createRequireAuth({
-    sessaoRepo: criarPgSessaoRepository(),
-    utilizadorRepo,
-  });
-  const staff = [requireAuth, createRequireRole('FUNCIONARIO', 'ADMINISTRADOR')];
-  const mecanico = [requireAuth, createRequireRole('MECANICO')];
-  const cliente = [requireAuth, createRequireRole('CLIENTE')];
+  const {
+    requireAuth,
+    requireRole,
+    criarOS,
+    listarOsStaff,
+    detalheOs,
+    transitarOsStaff,
+    adicionarServico,
+    adicionarPeca,
+    listarHistoricoOs,
+    listarMinhasOs,
+    listarOsMecanico,
+    listarLinhasOs,
+    listarChecklistOs,
+    listarMecanicos,
+    escolherEntrega,
+    atribuirMecanico,
+    submeterDiagnostico,
+    precificarOS,
+    decisaoCliente,
+    validarRevisao,
+    iniciarDiagnostico,
+    concluirReparacao,
+    iniciarReparacao,
+    registarNovaNecessidade,
+  } = dependencies;
+  const staff = [requireAuth, requireRole('FUNCIONARIO', 'ADMINISTRADOR')];
+  const mecanico = [requireAuth, requireRole('MECANICO')];
+  const cliente = [requireAuth, requireRole('CLIENTE')];
   const qualquerAutenticado = [requireAuth];
 
   // ★ F12-CORREÇÃO (1/3) — helper de autorização de LEITURA de OS.
@@ -77,72 +55,6 @@ export function createWorkOrdersRouter() {
   const podeVerTodas = (u) =>
     ['FUNCIONARIO', 'ADMINISTRADOR', 'MECANICO'].includes(u?.perfil);
 
-  // ★ Fase 2A — ações que deixam de ser do funcionário e passam a ser exclusivas
-  // do mecânico dono. O endpoint genérico /transicoes (staff) bloqueia-as como
-  // defesa em profundidade: mesmo que alguém chame a API diretamente com um
-  // token de funcionário, recebe 403 em vez de fazer o trabalho do mecânico.
-    // ★ Fase 2A — ações que, depois de a OS estar atribuída a um mecânico,
-  // passam a ser exclusivas do mecânico dono.
-  //
-  // Compatibilidade transitória:
-  // - Se a OS ainda NÃO tem mecanico_id (fluxo antigo/smoke), o staff pode usar
-  //   o endpoint genérico.
-  // - Se a OS JÁ FOI atribuída a um mecânico, o staff é bloqueado.
-  //
-  // Isto preserva o novo modelo real:
-  // funcionário cria/attribution → mecânico inicia diagnóstico/conclui reparação.
-  // Mas não parte testes legados que não atribuem mecânico.
-  const ACOES_RESERVADAS_MECANICO = new Set(['iniciar_diagnostico', 'concluir']);
-
-  router.post('/ordens/:id/transicoes', ...staff, asyncRoute(async (req, res) => {
-    const acao = req.body?.acao;
-
-    if (ACOES_RESERVADAS_MECANICO.has(acao)) {
-      const os = await osRepo.procurarPorId(req.params.id);
-
-      if (os?.mecanicoId) {
-        return res.status(403).json({
-          erro: {
-            codigo: 'ACAO_RESERVADA_MECANICO',
-            mensagem: 'Esta OS já está atribuída a um mecânico. Esta ação pertence ao mecânico responsável.',
-          },
-        });
-      }
-    }
-
-    const resultado = await transitarOs({
-      id: req.params.id,
-      utilizador: req.utilizador,
-      acao,
-      motivo: req.body?.motivo,
-    });
-    res.json({ data: resultado });
-  }));
-  // ------------------------------------------------------------
-  // Use-cases EXISTENTES
-  // ------------------------------------------------------------
-  const criarOS = criarCriarOS({ osRepo, utilizadorRepo, clienteRepo, veiculoRepo });
-  const listarOsStaff = criarListarOsStaff({ osRepo });
-  const detalheOs = criarDetalheOs({ osRepo });
-  const transitarOs = criarTransitarOs({ osRepo });
-  const adicionarServico = criarAdicionarServico({ osRepo });
-  const adicionarPeca = criarAdicionarPeca({ osRepo });
-  const listarHistoricoOs = criarListarHistoricoOs({ osRepo });
-  const listarMinhasOs = criarListarMinhasOs({ osRepo });
-  const escolherEntrega = criarEscolherEntrega({ osRepo });
-
-  // ------------------------------------------------------------
-  // Use-cases NOVOS (F12)
-  // ------------------------------------------------------------
-  const atribuirMecanico = criarAtribuirMecanico({ osRepo, utilizadorRepo });
-  const submeterDiagnostico = criarSubmeterDiagnostico({ osRepo });
-  const precificarOS = criarPrecificarOS({ osRepo });
-  const decisaoCliente = criarDecisaoCliente({ osRepo, clienteRepo });
-  const validarRevisao = criarValidarRevisao({ osRepo });
-  // ★ Fase 2A
-  const iniciarDiagnostico = criarIniciarDiagnostico({ osRepo });
-  const concluirReparacao = criarConcluirReparacao({ osRepo });
-
   // ============================================================
   // ⚠️ REGRA DE OURO DO EXPRESS:
   // Rotas ESTÁTICAS (/meu, /minhas, /mecanicos) SEMPRE ANTES
@@ -165,19 +77,17 @@ export function createWorkOrdersRouter() {
 
   // Cliente: as suas OS
   router.get('/ordens/meu', ...cliente, asyncRoute(async (req, res) => {
-    res.json({ data: await listarMinhasOs({ utilizador: req.utilizador }) });
+    res.json({ data: await listarMinhasOs({ utilizadorId: req.utilizador.id }) });
   }));
 
   // Mecânico: as OS atribuídas a ele
   router.get('/ordens/minhas', ...mecanico, asyncRoute(async (req, res) => {
-    const lista = await osRepo.listarPorMecanico(req.utilizador.id);
-    res.json({ data: lista });
+    res.json({ data: await listarOsMecanico({ utilizadorId: req.utilizador.id }) });
   }));
 
   // Staff: lista de mecânicos ativos para o dropdown de atribuição
   router.get('/ordens/mecanicos', ...staff, asyncRoute(async (req, res) => {
-    const lista = await utilizadorRepo.listarPorPerfil('MECANICO');
-    res.json({ data: lista });
+    res.json({ data: await listarMecanicos() });
   }));
 
   // --- DINÂMICA genérica (:id) — SEMPRE depois das estáticas ---
@@ -201,29 +111,28 @@ export function createWorkOrdersRouter() {
   // de API (defesa em profundidade), evoluir para um listarLinhasTecnico que
   // devolve preco_unitario: null e restringir a staff+cliente.
   router.get('/ordens/:id/linhas', ...qualquerAutenticado, asyncRoute(async (req, res) => {
-    res.json({ data: await osRepo.listarLinhas(req.params.id) });
+    res.json({ data: await listarLinhasOs({ ordemId: req.params.id }) });
   }));
 
   router.post('/ordens/:id/transicoes', ...staff, asyncRoute(async (req, res) => {
     const acao = req.body?.acao;
-
-    // ★ Fase 2A — bloqueio de defesa em profundidade.
-    if (ACOES_RESERVADAS_MECANICO.has(acao)) {
+    try {
+      const resultado = await transitarOsStaff({
+        id: req.params.id,
+        utilizador: req.utilizador,
+        acao,
+        motivo: req.body?.motivo,
+      });
+      res.json({ data: resultado });
+    } catch (error) {
+      if (error.code !== 'ACAO_RESERVADA_MECANICO') throw error;
       return res.status(403).json({
         erro: {
           codigo: 'ACAO_RESERVADA_MECANICO',
-          mensagem: 'Esta ação pertence ao mecânico responsável pela OS.',
+          mensagem: error.message,
         },
       });
     }
-
-    const resultado = await transitarOs({
-      id: req.params.id,
-      utilizador: req.utilizador,
-      acao,
-      motivo: req.body?.motivo,
-    });
-    res.json({ data: resultado });
   }));
 
   router.post('/ordens/:id/servicos', ...staff, asyncRoute(async (req, res) => {
@@ -245,10 +154,7 @@ export function createWorkOrdersRouter() {
   }));
 
   // ★ F12-CORREÇÃO (3/3) — passa utilizador + isStaff ao histórico.
-  // Se o use-case só fizer ({ id }) => osRepo.listarHistorico(id), os args extra
-  // são ignorados pelo destructuring (inofensivo). Se ele autorizar como o
-  // detalhe-os.js (acessa utilizador.id), isto corrige o 500 por TypeError.
-  // Win-win, risco-zero de regressão.
+  // O caso de uso valida a autorização para o dono ou para staff.
   router.get('/ordens/:id/historico', ...qualquerAutenticado, asyncRoute(async (req, res) => {
     res.json({
       data: await listarHistoricoOs({
@@ -262,7 +168,7 @@ export function createWorkOrdersRouter() {
   // F12: checklist técnico do diagnóstico.
   // Visível a staff + cliente (o mecânico já o tem no próprio form).
   router.get('/ordens/:id/checklist', ...qualquerAutenticado, asyncRoute(async (req, res) => {
-    res.json({ data: await osRepo.listarChecklist(req.params.id) });
+    res.json({ data: await listarChecklistOs({ ordemId: req.params.id }) });
   }));
 
   // RF07: escolha de modalidade de entrega — cliente OU staff
@@ -271,6 +177,9 @@ export function createWorkOrdersRouter() {
       ordemId: req.params.id,
       utilizador: req.utilizador,
       modalidade: req.body?.modalidade,
+      enderecoEntrega: req.body?.enderecoEntrega,
+      lat: req.body?.lat,
+      lng: req.body?.lng,
     });
     res.json({ data: resultado });
   }));
@@ -320,6 +229,30 @@ export function createWorkOrdersRouter() {
     });
     res.json({ data: resultado });
   }));
+
+    // Fase 5: mecânico inicia reparação
+  router.post('/ordens/:id/iniciar-reparacao', ...mecanico, asyncRoute(async (req, res) => {
+    const resultado = await iniciarReparacao({
+      ordemId: req.params.id,
+      utilizador: req.utilizador,
+    });
+
+    res.json({ data: resultado });
+  }));
+
+  // Fase 5: mecânico regista necessidade extra durante reparação
+  router.post('/ordens/:id/nova-necessidade', ...mecanico, asyncRoute(async (req, res) => {
+    const resultado = await registarNovaNecessidade({
+      ordemId: req.params.id,
+      utilizador: req.utilizador,
+      servicos: req.body?.servicos ?? [],
+      pecas: req.body?.pecas ?? [],
+    });
+
+    res.json({ data: resultado });
+  }));
+
+
 
   // Funcionário precifica (atribui preços + taxa diagnóstico)
   router.post('/ordens/:id/precificar', ...staff, asyncRoute(async (req, res) => {

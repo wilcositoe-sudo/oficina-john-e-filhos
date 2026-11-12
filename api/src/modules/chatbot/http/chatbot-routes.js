@@ -1,70 +1,47 @@
 import { Router } from 'express';
 import { asyncRoute } from '../../../shared/http/async-route.js';
 
-import { criarPgChatbotRepository } from '../adapters/pg-chatbot-repository.js';
-import {
-  criarIniciarConversa,
-  criarEnviarMensagemCliente,
-  criarObterConversa,
-  criarAgendarDiagnostico,
-  criarDefinirChegadaOficina,
-  criarListarConversasStaff,
-  criarAtenderConversaStaff,
-  criarResponderStaff,
-  criarDefinirDecisaoDiagnosticoStaff,
-  criarFecharConversaStaff,
-  criarConverterLeadEmOs,
-} from '../use-cases/chatbot-usecases.js';
-
-import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
-import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
-import { criarPgClienteRepository } from '../../auth/adapters/pg-cliente-repository.js';
-import { criarPgVeiculoRepository } from '../../vehicles/adapters/pg-veiculo-repository.js';
-import { criarPgOsRepository } from '../../work-orders/adapters/pg-os-repository.js';
-import { criarCriarOS } from '../../work-orders/use-cases/criar-os.js';
-import { createRequireAuth, createRequireRole } from '../../auth/http/session-middleware.js';
-
-export function createChatbotRouter() {
+export function createChatbotRouter(dependencies) {
   const router = Router();
-
-  const chatRepo = criarPgChatbotRepository();
-  const utilizadorRepo = criarPgUtilizadorRepository();
-  const clienteRepo = criarPgClienteRepository();
-  const veiculoRepo = criarPgVeiculoRepository();
-  const osRepo = criarPgOsRepository();
-
-  const requireAuth = createRequireAuth({
-    sessaoRepo: criarPgSessaoRepository(),
-    utilizadorRepo,
-  });
-
-  const cliente = [requireAuth, createRequireRole('CLIENTE')];
-  const staff = [requireAuth, createRequireRole('FUNCIONARIO', 'ADMINISTRADOR')];
+  const {
+    requireAuth,
+    requireRole,
+    iniciarConversa,
+    enviarMensagemCliente,
+    obterConversa,
+    agendarDiagnostico,
+    definirChegadaOficina,
+    listarConversasStaff,
+    atenderConversaStaff,
+    responderStaff,
+    definirDecisaoDiagnosticoStaff,
+    fecharConversaStaff,
+    converterLeadEmOs,
+    listarConversasCliente,
+    ocultarConversa,
+  } = dependencies;
+  const cliente = [requireAuth, requireRole('CLIENTE')];
+  const staff = [requireAuth, requireRole('FUNCIONARIO', 'ADMINISTRADOR')];
   const qualquerAutenticado = [requireAuth];
-
-  const criarOS = criarCriarOS({ osRepo, utilizadorRepo, clienteRepo, veiculoRepo });
-
-  const iniciarConversa = criarIniciarConversa({ chatRepo });
-  const enviarMensagemCliente = criarEnviarMensagemCliente({ chatRepo });
-  const obterConversa = criarObterConversa({ chatRepo });
-  const agendarDiagnostico = criarAgendarDiagnostico({ chatRepo });
-  const definirChegadaOficina = criarDefinirChegadaOficina({ chatRepo });
-  const listarConversasStaff = criarListarConversasStaff({ chatRepo });
-  const atenderConversaStaff = criarAtenderConversaStaff({ chatRepo });
-  const responderStaff = criarResponderStaff({ chatRepo });
-  const definirDecisaoDiagnosticoStaff = criarDefinirDecisaoDiagnosticoStaff({ chatRepo });
-  const fecharConversaStaff = criarFecharConversaStaff({ chatRepo });
-  const converterLeadEmOs = criarConverterLeadEmOs({ chatRepo, criarOS, osRepo });
 
   const podeVerTodas = (u) => ['FUNCIONARIO', 'ADMINISTRADOR'].includes(u?.perfil);
 
   // Cliente
   router.post('/chatbot/iniciar', ...cliente, asyncRoute(async (req, res) => {
-    res.json({ data: await iniciarConversa({ utilizador: req.utilizador }) });
+    res.json({
+      data: await iniciarConversa({
+        utilizador: req.utilizador,
+        nova: req.body?.nova === true,
+      }),
+    });
   }));
 
   router.get('/chatbot/conversas/ativa', ...cliente, asyncRoute(async (req, res) => {
     res.json({ data: await iniciarConversa({ utilizador: req.utilizador }) });
+  }));
+
+  router.get('/chatbot/minhas-conversas', ...cliente, asyncRoute(async (req, res) => {
+    res.json({ data: await listarConversasCliente({ utilizador: req.utilizador }) });
   }));
 
   router.post('/chatbot/mensagens', ...cliente, asyncRoute(async (req, res) => {
@@ -85,6 +62,15 @@ export function createChatbotRouter() {
         isStaff: podeVerTodas(req.utilizador),
       }),
     });
+  }));
+
+  router.delete('/chatbot/conversas/:id', ...qualquerAutenticado, asyncRoute(async (req, res) => {
+    await ocultarConversa({
+      conversaId: req.params.id,
+      utilizador: req.utilizador,
+      isStaff: podeVerTodas(req.utilizador),
+    });
+    res.status(204).send();
   }));
 
   router.post('/chatbot/conversas/:id/agendar', ...cliente, asyncRoute(async (req, res) => {
@@ -117,7 +103,16 @@ export function createChatbotRouter() {
 
   // Staff
   router.get('/chatbot/staff/conversas', ...staff, asyncRoute(async (req, res) => {
-    res.json({ data: await listarConversasStaff() });
+    res.json({ data: await listarConversasStaff({ utilizador: req.utilizador }) });
+  }));
+
+  router.delete('/chatbot/staff/conversas/:id', ...staff, asyncRoute(async (req, res) => {
+    await ocultarConversa({
+      conversaId: req.params.id,
+      utilizador: req.utilizador,
+      isStaff: true,
+    });
+    res.status(204).send();
   }));
 
   router.post('/chatbot/staff/conversas/:id/atender', ...staff, asyncRoute(async (req, res) => {
@@ -168,6 +163,7 @@ export function createChatbotRouter() {
       data: await converterLeadEmOs({
         conversaId: req.params.id,
         utilizador: req.utilizador,
+        descricaoProblema: req.body?.descricaoProblema,
       }),
     });
   }));

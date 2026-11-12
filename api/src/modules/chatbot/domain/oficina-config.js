@@ -1,12 +1,12 @@
 export const OFICINA = {
   nome: 'Oficina John e Filhos',
   horario: 'Segunda a Sábado, das 08:00 às 17:00',
-  morada: 'Maputo, Moçambique',
+  morada: 'Perto do Mercado Municipal, Moatize, Tete, Moçambique',
   telefone: '+258 84 000 0000',
   email: 'contacto@oficinajohnfilhos.co.mz',
 
-  // ⚠️ Ajusta para as coordenadas REAIS da oficina (sem isto a distância fica errada).
-  coordenadas: { lat: -25.9692, lng: 32.5732 },
+  // Ponto de referência informado pela oficina; substituir pelo portão quando houver coordenadas exatas.
+  coordenadas: { lat: -16.1168699, lng: 33.7435863 },
 
   // Taxa para a oficina IR BUSCAR o carro a casa do cliente (pré-OS).
   // Põe 0 se a recolha for gratuita.

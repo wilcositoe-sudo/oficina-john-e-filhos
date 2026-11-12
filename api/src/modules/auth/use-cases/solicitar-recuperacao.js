@@ -1,7 +1,10 @@
 import crypto from 'node:crypto';
 import { erros } from '../../../shared/errors/domain-error.js';
 
-export function criarSolicitarRecuperacao({ utilizadorRepo }) {
+export function criarSolicitarRecuperacao({
+  utilizadorRepo,
+  ambiente = process.env.NODE_ENV ?? 'development',
+}) {
   return async function solicitarRecuperacao({ email }) {
     const emailNorm = email?.trim().toLowerCase();
     if (!emailNorm) throw erros.utilizadorNaoEncontrado();
@@ -15,19 +18,12 @@ export function criarSolicitarRecuperacao({ utilizadorRepo }) {
 
     // Gera token seguro e define validade de 1 hora
     const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiraEm = new Date(Date.now() + 60 * 60 * 1000);
 
-    await utilizadorRepo.guardarTokenRecuperacao(utilizador.id, token, expiraEm);
+    await utilizadorRepo.guardarTokenRecuperacao(utilizador.id, tokenHash, expiraEm);
 
-    // SIMULAÇÃO DE E-MAIL (Para produção, integrar com Resend/SendGrid)
-    console.log(`\n[EMAIL SIMULADO] Para: ${emailNorm}`);
-    console.log(`[EMAIL SIMULADO] Assunto: Recuperação de senha - Oficina John e Filhos`);
-    console.log(`[EMAIL SIMULADO] O seu token de recuperação é: ${token}\n`);
-
-    // DEV: Devolve o token para permitir o redirecionamento automático no frontend
-    return { 
-      mensagem: 'Se este e-mail estiver registado, receberá as instruções.',
-      tokenDeTeste: token 
-    };
+    const resultado = { mensagem: 'Se este e-mail estiver registado, receberá as instruções.' };
+    return ambiente === 'production' ? resultado : { ...resultado, tokenDeTeste: token };
   };
 }

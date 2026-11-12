@@ -1,4 +1,5 @@
 import { DomainError, erros } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 
 const erroValidacao = (campo, msg) =>
   new DomainError('VALIDACAO', `Campo inválido: ${campo}. ${msg}`, 422, { campo });
@@ -8,7 +9,7 @@ export function criarAvaliarOs({ avaliacaoRepo, osRepo, clienteRepo }) {
   return async function avaliarOs({ ordemId, utilizador, classificacao, comentario }) {
     const os = await osRepo.procurarPorId(ordemId);
     if (!os) throw erros.osNaoEncontrada();
-    if (os.utilizadorId !== utilizador.id) throw erros.naoAutorizado();
+    if (!mesmaId(os.utilizadorId, utilizador.id)) throw erros.naoAutorizado();
 
     if (os.estado !== 'ENTREGUE') throw erros.osNaoElegivelAvaliacao(os.estado);
 

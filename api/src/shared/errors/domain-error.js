@@ -69,6 +69,12 @@ export const erros = {
     new DomainError('OS_NAO_ENCONTRADA', 'Ordem de serviço não encontrada.', 404),
   rn04SemServico: () =>
     new DomainError('RN04_SEM_SERVICO', 'Só é possível concluir com pelo menos um serviço lançado.', 409),
+  acaoReservadaMecanico: () =>
+    new DomainError(
+      'ACAO_RESERVADA_MECANICO',
+      'Esta OS já está atribuída a um mecânico. Esta ação pertence ao mecânico responsável.',
+      403,
+    ),
 
   // --- Pagamentos e recibos (RF06/RF13/RF14, RN06) ---
   osNaoElegivelPagamento: (estado) =>

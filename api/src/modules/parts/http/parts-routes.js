@@ -1,31 +1,66 @@
 import { Router } from 'express';
 import { asyncRoute } from '../../../shared/http/async-route.js';
-import { criarPgPecaRepository } from '../adapters/pg-peca-repository.js';
-import { criarPgSessaoRepository } from '../../auth/adapters/pg-sessao-repository.js';
-import { criarPgUtilizadorRepository } from '../../auth/adapters/pg-utilizador-repository.js';
-import { createRequireAuth, createRequireRole } from '../../auth/http/session-middleware.js';
-import { criarCriarPeca } from '../use-cases/criar-peca.js';
-import { criarListarPecas } from '../use-cases/listar-pecas.js';
+import { podeGerirCatalogo, erroPermissaoCatalogo } from '../../../shared/auth/catalogo-permissoes.js';
 
-export function createPartsRouter() {
+export function createPartsRouter({ requireAuth, requireRole, criar, listar, atualizar, apagar }) {
   const router = Router();
-  const pecaRepo = criarPgPecaRepository();
-  const requireAuth = createRequireAuth({
-    sessaoRepo: criarPgSessaoRepository(),
-    utilizadorRepo: criarPgUtilizadorRepository(),
-  });
-  const staff = [requireAuth, createRequireRole('FUNCIONARIO', 'ADMINISTRADOR')];
 
-  const criar = criarCriarPeca({ pecaRepo });
-  const listar = criarListarPecas({ pecaRepo });
+  // Staff completo: funcionário/administrador
+  const staff = [requireAuth, requireRole('FUNCIONARIO', 'ADMINISTRADOR')];
 
-  router.get('/pecas', ...staff, asyncRoute(async (req, res) => {
-    res.json({ data: await listar() });
+  // Quem pode ver catálogo: mecânico + funcionário + administrador
+  const podeVerCatalogo = [
+    requireAuth,
+    requireRole('MECANICO', 'FUNCIONARIO', 'ADMINISTRADOR'),
+  ];
+
+  // GET /pecas
+  // - Mecânico vê apenas nome/descrição/ativo, sem preço.
+  // - Funcionário/Admin vê preço para gestão/precificação.
+  router.get('/pecas', ...podeVerCatalogo, asyncRoute(async (req, res) => {
+    const pecas = await listar();
+
+    if (req.utilizador.perfil === 'MECANICO') {
+      return res.json({
+        data: pecas.map((p) => ({
+          id: p.id,
+          codigo: p.codigo,
+          nome: p.nome,
+          descricao: p.descricao,
+          ativo: p.ativo,
+        })),
+      });
+    }
+
+    res.json({ data: pecas });
   }));
 
+  // POST /pecas
+  // Só admin ou funcionário autorizado pode criar peça.
   router.post('/pecas', ...staff, asyncRoute(async (req, res) => {
+    if (!podeGerirCatalogo(req.utilizador)) {
+      return res.status(403).json({ erro: erroPermissaoCatalogo() });
+    }
+
     const resultado = await criar(req.body ?? {});
     res.status(201).json({ data: resultado });
+  }));
+
+  router.patch('/pecas/:id', ...staff, asyncRoute(async (req, res) => {
+    if (!podeGerirCatalogo(req.utilizador)) {
+      return res.status(403).json({ erro: erroPermissaoCatalogo() });
+    }
+
+    res.json({ data: await atualizar({ ...(req.body ?? {}), id: req.params.id }) });
+  }));
+
+  router.delete('/pecas/:id', ...staff, asyncRoute(async (req, res) => {
+    if (!podeGerirCatalogo(req.utilizador)) {
+      return res.status(403).json({ erro: erroPermissaoCatalogo() });
+    }
+
+    await apagar(req.params.id);
+    res.status(204).send();
   }));
 
   return router;

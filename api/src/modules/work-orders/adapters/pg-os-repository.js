@@ -12,6 +12,9 @@ const SELECT_COLS = `
   o.valor_total,
   o.taxa_entrega,
   o.modalidade_entrega,
+  o.endereco_entrega,
+  o.entrega_lat,
+  o.entrega_lng,
   o.taxa_diagnostico,
   o.diagnostico_cobrado,
   o.data_conclusao,
@@ -22,7 +25,7 @@ const SELECT_BASE = `
   SELECT ${SELECT_COLS}
   FROM ordens_servico o
   JOIN clientes c ON c.id = o.cliente_id
-  JOIN utilizadores u ON u.id = c.utilizador_id`;
+  JOIN utilizadores u ON c.utilizador_id = u.id`;
 
 const map = (r) => ({
   id: r.id,
@@ -35,6 +38,9 @@ const map = (r) => ({
   valorTotal: r.valor_total,
   taxaEntrega: r.taxa_entrega ?? '0.00',
   modalidadeEntrega: r.modalidade_entrega ?? null,
+  enderecoEntrega: r.endereco_entrega ?? null,
+  entregaLat: r.entrega_lat ?? null,
+  entregaLng: r.entrega_lng ?? null,
   taxaDiagnostico: r.taxa_diagnostico ?? '0.00',
   diagnosticoCobrado: Boolean(r.diagnostico_cobrado),
   dataConclusao: r.data_conclusao,
@@ -51,9 +57,6 @@ const mapHistorico = (r) => ({
   motivo: r.motivo,
 });
 
-// RN05: total = serviços + peças + taxa de entrega.
-// A taxa de diagnóstico NÃO entra aqui normalmente.
-// Só passa a ser o valor_total se o cliente REJEITAR o orçamento.
 const SQL_RECOMPUTAR_TOTAL = `
   UPDATE ordens_servico
   SET valor_total = COALESCE((SELECT SUM(subtotal) FROM servicos_os WHERE ordem_id = $1::bigint), 0)
@@ -70,28 +73,472 @@ const SQL_PROPRIETARIO = `
    JOIN utilizadores u ON u.id = c.utilizador_id
    WHERE o2.id = $1::bigint) AS utilizador_id`;
 
-// Colunas para RETURNING em UPDATE, substituindo o join por subquery.
-// ✅ DEPOIS — colunas SEM prefixo de tabela, válidas em UPDATE … RETURNING.
-// O utilizador_id vem da subquery SQL_PROPRIETARIO (usa $1::bigint = ordemId).
 const RETURNING_COLS = `
   id, numero_os, cliente_id, veiculo_id, mecanico_id, estado, descricao_problema,
   valor_total, taxa_entrega, modalidade_entrega, taxa_diagnostico, diagnostico_cobrado,
-  data_conclusao, created_at, ${SQL_PROPRIETARIO}`;
+  endereco_entrega, entrega_lat, entrega_lng, data_conclusao, created_at, ${SQL_PROPRIETARIO}`;
+
+const ROTULOS_ESTADO_CHAT = {
+  PENDENTE: 'Pendente',
+  AGUARDANDO_DIAGNOSTICO: 'A aguardar diagnóstico',
+  EM_DIAGNOSTICO: 'Em diagnóstico',
+  AGUARDANDO_PRECO_FUNCIONARIO: 'A aguardar orçamento',
+  AGUARDANDO_APROVACAO_CLIENTE: 'A aguardar aprovação do cliente',
+  AGUARDANDO_VALIDACAO_FUNCIONARIO: 'A aguardar validação',
+  AGUARDANDO_ATRIBUICAO_REPARACAO: 'A aguardar atribuição para reparação',
+  AGUARDANDO_REPARACAO: 'A aguardar reparação',
+  EM_REPARACAO: 'Em reparação',
+  AGUARDANDO_PECAS: 'A aguardar peças',
+  CONCLUIDA: 'Reparação concluída',
+  PAGA: 'Pagamento confirmado',
+  ENTREGUE: 'Veículo entregue',
+  REJEITADA: 'Orçamento rejeitado',
+  CANCELADA: 'Cancelada',
+};
+
+async function inserirMensagemEstado(client, { ordemId, numeroOS, estadoAnterior, estadoNovo }) {
+  const anterior = estadoAnterior
+    ? ROTULOS_ESTADO_CHAT[estadoAnterior] ?? estadoAnterior
+    : null;
+  const novo = ROTULOS_ESTADO_CHAT[estadoNovo] ?? estadoNovo;
+  const mudanca = anterior ? `: ${anterior} → ${novo}` : `: ${novo}`;
+
+  await client.query(
+    `INSERT INTO mensagens (ordem_id, remetente_id, conteudo, tipo)
+     VALUES ($1::bigint, NULL, $2::text, 'SISTEMA')`,
+    [ordemId, `Atualização da OS ${numeroOS}${mudanca}.`],
+  );
+}
+
+// ============================================================
+// P1 — Planeamento de notificações por transição (best-effort)
+// ============================================================
+// Este bloco devolve sempre o shape esperado por _notificarBestEffort:
+// { destinatarioPerfil, destinatarioId, titulo, corpo, ordemId, tipo }
+function _planosNotificacao(estadoNovo, os) {
+  if (!os || !estadoNovo) return [];
+
+  const ordemId = os.id;
+  const numero = os.numeroOS ?? os.numero_os ?? `#${ordemId}`;
+
+  const clienteId = os.clienteId ?? os.cliente_id ?? null;
+  const clienteUtilizadorId = os.utilizadorId ?? os.utilizador_id ?? null;
+  const mecanicoId = os.mecanicoId ?? os.mecanico_id ?? null;
+
+  const taxaDiagnosticoRaw = Number(os.taxaDiagnostico ?? os.taxa_diagnostico ?? 0);
+  const taxaDiagnostico = Number.isFinite(taxaDiagnosticoRaw) ? taxaDiagnosticoRaw : 0;
+
+  const plano = (destinatarioPerfil, destinatarioId, titulo, corpo) => ({
+    destinatarioPerfil,
+    destinatarioId: destinatarioId ?? null,
+    titulo,
+    corpo,
+    ordemId,
+    tipo: 'OS',
+  });
+
+  const planos = [];
+
+  switch (estadoNovo) {
+    case 'PENDENTE':
+      break;
+
+    case 'AGUARDANDO_DIAGNOSTICO':
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'Nova OS atribuída',
+            `A OS ${numero} está à espera que inicies o diagnóstico técnico.`,
+          ),
+        );
+      }
+
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Veículo encaminhado para mecânico',
+            `A OS ${numero} foi atribuída a um mecânico para diagnóstico.`,
+          ),
+        );
+      }
+      break;
+
+    case 'EM_DIAGNOSTICO':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Veículo em diagnóstico',
+            `A OS ${numero} entrou em diagnóstico técnico.`,
+          ),
+        );
+      }
+
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'Diagnóstico iniciado',
+            `A OS ${numero} está em diagnóstico técnico.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_PRECO_FUNCIONARIO':
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'Diagnóstico concluído',
+          `A OS ${numero} aguarda a tua precificação.`,
+        ),
+      );
+
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'Diagnóstico submetido',
+            `A OS ${numero} foi enviada para precificação.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_APROVACAO_CLIENTE':
+    case 'AGUARDANDO_APROVACAO_ORCAMENTO':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Orçamento disponível',
+            `O orçamento da OS ${numero} está pronto para aprovação.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_VALIDACAO_FUNCIONARIO':
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'Cliente pediu revisão',
+          `O cliente removeu itens na OS ${numero}. Valida os cortes.`,
+        ),
+      );
+
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Edição enviada',
+            `A revisão da OS ${numero} foi enviada ao funcionário.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_ATRIBUICAO_REPARACAO':
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'Orçamento aprovado pelo cliente',
+          `A OS ${numero} foi aprovada pelo cliente e aguarda atribuição de mecânico de reparação.`,
+        ),
+      );
+
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Orçamento aprovado',
+            `A OS ${numero} foi aprovada. A oficina vai atribuir o mecânico de reparação.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_REPARACAO':
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'OS atribuída para reparação',
+            `A OS ${numero} foi atribuída a ti para reparação. Inicia quando estiveres disponível.`,
+          ),
+        );
+      }
+
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Reparação atribuída',
+            `A OS ${numero} foi atribuída a um mecânico para reparação.`,
+          ),
+        );
+      }
+      break;
+
+    case 'EM_REPARACAO':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Reparação iniciada',
+            `A reparação da OS ${numero} começou.`,
+          ),
+        );
+      }
+
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'Podes começar a reparação',
+            `O cliente aprovou a OS ${numero}.`,
+          ),
+        );
+      }
+      break;
+
+    case 'AGUARDANDO_PECAS':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'A aguardar peças',
+            `A OS ${numero} está a aguardar peças.`,
+          ),
+        );
+      }
+
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'OS aguarda peças',
+            `A OS ${numero} está a aguardar peças.`,
+          ),
+        );
+      }
+
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'OS aguarda peças',
+          `A OS ${numero} está a aguardar peças.`,
+        ),
+      );
+      break;
+
+    case 'CONCLUIDA':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Carro pronto',
+            `A OS ${numero} foi concluída. Escolhe a modalidade de entrega e realiza o pagamento (presencial, MPesa, M-Kesh ou Mola).`,
+          ),
+        );
+      }
+
+      if (mecanicoId) {
+        planos.push(
+          plano(
+            'MECANICO',
+            mecanicoId,
+            'Reparação concluída',
+            `A OS ${numero} foi marcada como concluída.`,
+          ),
+        );
+      }
+      break;
+
+    case 'PAGA':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Pagamento confirmado',
+            `O pagamento da OS ${numero} foi confirmado.`,
+          ),
+        );
+      }
+
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'Pagamento confirmado',
+          `A OS ${numero} foi paga.`,
+        ),
+      );
+      break;
+
+    case 'ENTREGUE':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Veículo entregue',
+            `A OS ${numero} foi entregue. Obrigado!`,
+          ),
+        );
+      }
+      break;
+
+    case 'REJEITADA':
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'Orçamento rejeitado',
+          `Cliente rejeitou a OS ${numero}.`,
+        ),
+      );
+
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'Orçamento rejeitado',
+            taxaDiagnostico > 0
+              ? `Foi cobrada a taxa de diagnóstico da OS ${numero}: ${taxaDiagnostico.toFixed(2)} MZN.`
+              : `A OS ${numero} foi rejeitada.`,
+          ),
+        );
+      }
+      break;
+
+    case 'CANCELADA':
+      if (clienteUtilizadorId) {
+        planos.push(
+          plano(
+            'CLIENTE',
+            clienteUtilizadorId,
+            'OS cancelada',
+            `A OS ${numero} foi cancelada.`,
+          ),
+        );
+      }
+
+      planos.push(
+        plano(
+          'FUNCIONARIO',
+          null,
+          'OS cancelada',
+          `A OS ${numero} foi cancelada.`,
+        ),
+      );
+      break;
+
+    default:
+      break;
+  }
+
+  return planos;
+}
+async function _notificarBestEffort(payload) {
+  if (!payload) return;
+
+  try {
+    await pool.query(
+      `INSERT INTO notificacoes
+         (destinatario_perfil, destinatario_id, titulo, corpo, ordem_id, tipo)
+       VALUES ($1::text, $2::bigint, $3::text, $4::text, $5::bigint, $6::text)`,
+      [
+        payload.destinatarioPerfil ?? null,
+        payload.destinatarioId ?? null,
+        payload.titulo ?? '',
+        payload.corpo ?? null,
+        payload.ordemId ?? null,
+        payload.tipo ?? 'OS',
+      ],
+    );
+  } catch (e) {
+    // Best-effort: falha de notificação NUNCA rebenta a operação principal.
+    // eslint-disable-next-line no-console
+    console.error('[notificacao] falha ao criar:', e.message);
+  }
+}
+
 export function criarPgOsRepository() {
   return {
     // ============================================================
     // F12 — Atribuição ao Mecânico
     // ============================================================
-    async atribuirMecanico({ ordemId, mecanicoId }) {
-      const { rows } = await pool.query(
-        `UPDATE ordens_servico
-         SET mecanico_id = $2::bigint,
-             updated_at = now()
-         WHERE id = $1::bigint
-         RETURNING id, numero_os, estado, mecanico_id`,
-        [ordemId, mecanicoId],
-      );
-      return rows[0] ?? null;
+    async atribuirMecanico({
+      ordemId,
+      mecanicoId,
+      estadoAnterior,
+      estadoNovo,
+      utilizadorId,
+      motivo,
+    }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          `UPDATE ordens_servico
+           SET mecanico_id = $2::bigint,
+               estado = $3::text,
+               updated_at = now()
+           WHERE id = $1::bigint
+             AND estado = $4::text
+           RETURNING ${RETURNING_COLS}`,
+          [ordemId, mecanicoId, estadoNovo, estadoAnterior],
+        );
+
+        if (!rows[0]) {
+          await client.query('ROLLBACK');
+          return null;
+        }
+
+        await client.query(
+          `INSERT INTO historico_estado (
+             ordem_id, estado_anterior, estado_novo, utilizador_id, motivo
+           )
+           VALUES ($1::bigint, $2::text, $3::text, $4::bigint, $5::text)`,
+          [ordemId, estadoAnterior, estadoNovo, utilizadorId ?? null, motivo ?? null],
+        );
+        await client.query('COMMIT');
+
+        const osMap = map(rows[0]);
+        for (const plano of _planosNotificacao(estadoNovo, osMap)) {
+          await _notificarBestEffort(plano);
+        }
+        return osMap;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
     },
 
     async listarPorMecanico(mecanicoId) {
@@ -106,27 +553,81 @@ export function criarPgOsRepository() {
     },
 
     // ============================================================
-    // F12 — Diagnóstico (Mecânico lança SEM preço)
+    // Fase 5 — Edição do cliente: marcar/remover pendências
     // ============================================================
-    async lancarServicoSemPreco({ ordemId, servicoId, quantidade, descricaoSnapshot }) {
-      const { rows: servico } = await pool.query(
-        `SELECT nome, ativo
-         FROM servicos
-         WHERE id = $1::bigint`,
-        [servicoId],
+    async marcarItensParaRemocao({ ordemId, itensRemover }) {
+      for (const item of (itensRemover ?? [])) {
+        const linhaId = Number(item?.linhaId);
+
+        if (!Number.isFinite(linhaId)) continue;
+
+        if (item?.tipo === 'servico') {
+          await pool.query(
+            `UPDATE servicos_os
+             SET pendente_remocao = TRUE
+             WHERE id = $1::bigint
+               AND ordem_id = $2::bigint`,
+            [linhaId, ordemId],
+          );
+        }
+
+        if (item?.tipo === 'peca') {
+          await pool.query(
+            `UPDATE pecas_os
+             SET pendente_remocao = TRUE
+             WHERE id = $1::bigint
+               AND ordem_id = $2::bigint`,
+            [linhaId, ordemId],
+          );
+        }
+      }
+    },
+
+    async rejeitarRemocoesPendentes(ordemId) {
+      await pool.query(
+        `UPDATE servicos_os
+         SET pendente_remocao = FALSE
+         WHERE ordem_id = $1::bigint
+           AND pendente_remocao = TRUE`,
+        [ordemId],
       );
 
-      if (!servico[0]) throw erros.servicoNaoEncontrado();
-      if (!servico[0].ativo) throw erros.servicoInativo();
+      await pool.query(
+        `UPDATE pecas_os
+         SET pendente_remocao = FALSE
+         WHERE ordem_id = $1::bigint
+           AND pendente_remocao = TRUE`,
+        [ordemId],
+      );
+    },
 
-      const qtd = Number(quantidade ?? 1);
-      if (!Number.isFinite(qtd) || qtd <= 0) {
-        throw erros.contaInternaInvalida('Quantidade inválida.');
-      }
+    async aplicarRemocoesPendentes(ordemId) {
+      await pool.query(
+        `DELETE FROM servicos_os
+         WHERE ordem_id = $1::bigint
+           AND pendente_remocao = TRUE`,
+        [ordemId],
+      );
 
-      const descricao = (descricaoSnapshot?.trim() || servico[0].nome);
+      await pool.query(
+        `DELETE FROM pecas_os
+         WHERE ordem_id = $1::bigint
+           AND pendente_remocao = TRUE`,
+        [ordemId],
+      );
+    },
 
-      const { rows } = await pool.query(
+    // ============================================================
+    // F12 — Diagnóstico (Mecânico lança SEM preço)
+    // ============================================================
+    async lancarServicoSemPreco({
+      ordemId,
+      servicoId,
+      quantidade,
+      descricaoSnapshot,
+      origem = 'CATALOGO',
+    }) {
+      await pool.query(
         `INSERT INTO servicos_os (
            ordem_id,
            servico_id,
@@ -134,49 +635,65 @@ export function criarPgOsRepository() {
            quantidade,
            preco_unitario,
            subtotal,
-           precificado
+           precificado,
+           origem
          )
-         VALUES ($1::bigint, $2::bigint, $3::text, $4::numeric, 0, 0, FALSE)
-         RETURNING id, ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal, precificado`,
-        [ordemId, servicoId, descricao, qtd],
+         VALUES (
+           $1::bigint,
+           $2::bigint,
+           $3::text,
+           $4::numeric,
+           0,
+           0,
+           FALSE,
+           $5::text
+         )`,
+        [
+          ordemId,
+          servicoId ?? null,
+          descricaoSnapshot,
+          quantidade,
+          origem,
+        ],
       );
-
-      return rows[0];
     },
 
-    async lancarPecaSemPreco({ ordemId, pecaId, quantidade }) {
-      const { rows: peca } = await pool.query(
-        `SELECT nome, ativo
-         FROM pecas
-         WHERE id = $1::bigint`,
-        [pecaId],
-      );
-
-      if (!peca[0]) throw erros.pecaNaoEncontrada();
-      if (!peca[0].ativo) {
-        throw erros.contaInternaInvalida('A peça está inativa e não pode ser proposta.');
-      }
-
-      const qtd = Number(quantidade ?? 1);
-      if (!Number.isFinite(qtd) || qtd <= 0) {
-        throw erros.contaInternaInvalida('Quantidade inválida.');
-      }
-
-      const { rows } = await pool.query(
+    async lancarPecaSemPreco({
+      ordemId,
+      pecaId,
+      quantidade,
+      descricaoSnapshot,
+      origem = 'CATALOGO',
+    }) {
+      await pool.query(
         `INSERT INTO pecas_os (
            ordem_id,
            peca_id,
+           descricao_snapshot,
            quantidade,
            preco_unitario,
            subtotal,
-           precificado
+           precificado,
+           origem
          )
-         VALUES ($1::bigint, $2::bigint, $3::int, 0, 0, FALSE)
-         RETURNING id, ordem_id, peca_id, quantidade, preco_unitario, subtotal, precificado`,
-        [ordemId, pecaId, qtd],
+         VALUES (
+           $1::bigint,
+           $2::bigint,
+           $3::text,
+           $4::integer,
+           0,
+           0,
+           FALSE,
+           $5::text
+         )`,
+        [
+          ordemId,
+          pecaId ?? null,
+          descricaoSnapshot ?? null,
+          quantidade,
+          origem,
+        ],
       );
-
-      return rows[0];
     },
 
     // ============================================================
@@ -238,14 +755,9 @@ export function criarPgOsRepository() {
     // ============================================================
     // F12 — Decisão do Cliente
     // ============================================================
-
-    // CORREÇÃO CRÍTICA:
-    // Antes tinha AND precificado = FALSE.
-    // Isso impedia o cliente de remover itens já precificados, causando falha silenciosa.
     async removerLinhaServico({ linhaId }) {
       const { rowCount } = await pool.query(
-        `DELETE FROM servicos_os
-         WHERE id = $1::bigint`,
+        `DELETE FROM servicos_os WHERE id = $1::bigint`,
         [linhaId],
       );
       return rowCount > 0;
@@ -253,15 +765,15 @@ export function criarPgOsRepository() {
 
     async removerLinhaPeca({ linhaId }) {
       const { rowCount } = await pool.query(
-        `DELETE FROM pecas_os
-         WHERE id = $1::bigint`,
+        `DELETE FROM pecas_os WHERE id = $1::bigint`,
         [linhaId],
       );
       return rowCount > 0;
     },
 
-    async rejeitarComCobrancaDiagnostico({ ordemId, utilizadorId }) {
+    async rejeitarComCobrancaDiagnostico({ ordemId, estadoAnterior, utilizadorId }) {
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
 
@@ -273,7 +785,11 @@ export function criarPgOsRepository() {
           [ordemId],
         );
 
-        if (!atual[0] || atual[0].diagnostico_cobrado) {
+        if (
+          !atual[0] ||
+          atual[0].estado !== estadoAnterior ||
+          atual[0].diagnostico_cobrado
+        ) {
           await client.query('ROLLBACK');
           return null;
         }
@@ -286,8 +802,10 @@ export function criarPgOsRepository() {
                data_conclusao = now(),
                updated_at = now()
            WHERE id = $1::bigint
+             AND estado = $2::text
+             AND diagnostico_cobrado = FALSE
            RETURNING ${RETURNING_COLS}`,
-          [ordemId],
+          [ordemId, estadoAnterior],
         );
 
         if (!rows[0]) {
@@ -298,19 +816,35 @@ export function criarPgOsRepository() {
         if (utilizadorId) {
           await client.query(
             `INSERT INTO historico_estado (
-               ordem_id,
-               estado_anterior,
-               estado_novo,
-               utilizador_id,
-               motivo
+               ordem_id, estado_anterior, estado_novo, utilizador_id, motivo
              )
              VALUES ($1::bigint, $2::text, $3::text, $4::bigint, $5::text)`,
-            [ordemId, atual[0].estado, 'REJEITADA', utilizadorId, 'Cliente rejeitou o orçamento'],
+            [
+              ordemId,
+              atual[0].estado,
+              'REJEITADA',
+              utilizadorId,
+              'Cliente rejeitou o orçamento',
+            ],
           );
         }
 
+        await inserirMensagemEstado(client, {
+          ordemId,
+          numeroOS: rows[0].numero_os,
+          estadoAnterior: atual[0].estado,
+          estadoNovo: 'REJEITADA',
+        });
+
         await client.query('COMMIT');
-        return map(rows[0]);
+
+        const osMap = map(rows[0]);
+
+        for (const plano of _planosNotificacao('REJEITADA', osMap)) {
+          await _notificarBestEffort(plano);
+        }
+
+        return osMap;
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         throw err;
@@ -322,11 +856,6 @@ export function criarPgOsRepository() {
     // ============================================================
     // F12 — Recalcular total
     // ============================================================
-
-    // CORREÇÃO CRÍTICA:
-    // A versão anterior fazia LEFT JOIN servicos_os e pecas_os ao mesmo tempo.
-    // Se houvesse 2 serviços e 2 peças, o PostgreSQL criava produto cartesiano
-    // e multiplicava os subtotais. Agora usa subqueries independentes.
     async recalcularTotal(ordemId) {
       const { rows } = await pool.query(SQL_RECOMPUTAR_TOTAL, [ordemId]);
       return rows[0]?.valor_total ?? '0.00';
@@ -337,27 +866,18 @@ export function criarPgOsRepository() {
     // ============================================================
     async criar({ clienteId, veiculoId, funcionarioId, descricaoProblema, orcamentoId }) {
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
 
         const { rows } = await client.query(
           `INSERT INTO ordens_servico (
-             numero_os,
-             cliente_id,
-             veiculo_id,
-             funcionario_id,
-             orcamento_id,
-             descricao_problema,
-             estado
+             numero_os, cliente_id, veiculo_id, funcionario_id,
+             orcamento_id, descricao_problema, estado
            )
            VALUES (
              'TMP-' || gen_random_uuid(),
-             $1::bigint,
-             $2::bigint,
-             $3::bigint,
-             $4::bigint,
-             $5::text,
-             'PENDENTE'
+             $1::bigint, $2::bigint, $3::bigint, $4::bigint, $5::text, 'PENDENTE'
            )
            RETURNING id`,
           [clienteId, veiculoId, funcionarioId, orcamentoId ?? null, descricaoProblema],
@@ -375,14 +895,17 @@ export function criarPgOsRepository() {
 
         await client.query(
           `INSERT INTO historico_estado (
-             ordem_id,
-             estado_anterior,
-             estado_novo,
-             utilizador_id
+             ordem_id, estado_anterior, estado_novo, utilizador_id
            )
            VALUES ($1::bigint, NULL, 'PENDENTE', $2::bigint)`,
           [id, funcionarioId],
         );
+
+        await inserirMensagemEstado(client, {
+          ordemId: id,
+          numeroOS: upd[0].numero_os,
+          estadoNovo: 'PENDENTE',
+        });
 
         await client.query('COMMIT');
 
@@ -433,6 +956,7 @@ export function criarPgOsRepository() {
     // ============================================================
     async adicionarServico({ ordemId, servicoId, quantidade }) {
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
 
@@ -456,12 +980,8 @@ export function criarPgOsRepository() {
 
         const { rows: linha } = await client.query(
           `INSERT INTO servicos_os (
-             ordem_id,
-             servico_id,
-             descricao_snapshot,
-             quantidade,
-             preco_unitario,
-             subtotal
+             ordem_id, servico_id, descricao_snapshot, quantidade,
+             preco_unitario, subtotal
            )
            VALUES ($1::bigint, $2::bigint, $3::text, $4::numeric, $5::numeric, $5::numeric * $4::numeric)
            RETURNING id, descricao_snapshot, quantidade, preco_unitario, subtotal`,
@@ -486,6 +1006,7 @@ export function criarPgOsRepository() {
 
     async adicionarPeca({ ordemId, pecaId, quantidade }) {
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
 
@@ -503,9 +1024,7 @@ export function criarPgOsRepository() {
           await client.query('ROLLBACK');
 
           const { rows: existe } = await pool.query(
-            `SELECT ativo, quantidade_stock
-             FROM pecas
-             WHERE id = $1::bigint`,
+            `SELECT ativo, quantidade_stock FROM pecas WHERE id = $1::bigint`,
             [pecaId],
           );
 
@@ -515,11 +1034,7 @@ export function criarPgOsRepository() {
 
         const { rows: linha } = await client.query(
           `INSERT INTO pecas_os (
-             ordem_id,
-             peca_id,
-             quantidade,
-             preco_unitario,
-             subtotal
+             ordem_id, peca_id, quantidade, preco_unitario, subtotal
            )
            VALUES ($1::bigint, $2::bigint, $3::int, $4::numeric, $4::numeric * $3::int)
            RETURNING id, quantidade, preco_unitario, subtotal`,
@@ -544,7 +1059,16 @@ export function criarPgOsRepository() {
 
     async listarLinhas(ordemId) {
       const { rows: servicos } = await pool.query(
-        `SELECT id, servico_id, descricao_snapshot, quantidade, preco_unitario, subtotal, precificado
+        `SELECT
+           id,
+           servico_id,
+           descricao_snapshot,
+           quantidade,
+           preco_unitario,
+           subtotal,
+           precificado,
+           origem,
+           pendente_remocao
          FROM servicos_os
          WHERE ordem_id = $1::bigint
          ORDER BY id`,
@@ -552,7 +1076,16 @@ export function criarPgOsRepository() {
       );
 
       const { rows: pecas } = await pool.query(
-        `SELECT id, peca_id, quantidade, preco_unitario, subtotal, precificado
+        `SELECT
+           id,
+           peca_id,
+           descricao_snapshot,
+           quantidade,
+           preco_unitario,
+           subtotal,
+           precificado,
+           origem,
+           pendente_remocao
          FROM pecas_os
          WHERE ordem_id = $1::bigint
          ORDER BY id`,
@@ -560,6 +1093,206 @@ export function criarPgOsRepository() {
       );
 
       return { servicos, pecas };
+    },
+
+    // ============================================================
+    // F12 — Checklist técnico do diagnóstico
+    // ============================================================
+    async guardarChecklist({ ordemId, mecanicoId, itens }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+
+        await client.query(
+          `DELETE FROM diagnostico_checklist WHERE ordem_id = $1::bigint`,
+          [ordemId],
+        );
+
+        for (const it of (itens ?? [])) {
+          const item = String(it.item ?? '').trim();
+          if (!item) continue;
+
+          await client.query(
+            `INSERT INTO diagnostico_checklist (
+               ordem_id, mecanico_id, item, estado, observacao, valor_medicao, foto_url
+             )
+             VALUES ($1::bigint, $2::bigint, $3::text, $4::text, $5::text, $6::text, $7::text)`,
+            [
+              ordemId,
+              mecanicoId,
+              item,
+              it.estado ?? 'OK',
+              it.observacao ?? null,
+              it.valorMedicao ?? it.valor_medicao ?? null,
+              it.fotoUrl ?? it.foto_url ?? null,
+            ],
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async submeterDiagnostico({
+      ordemId,
+      mecanicoId,
+      checklist,
+      servicos,
+      pecas,
+      estadoAnterior,
+      estado,
+      utilizadorId,
+      motivo,
+    }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          `UPDATE ordens_servico
+           SET estado = $2::text,
+               updated_at = now()
+           WHERE id = $1::bigint
+             AND estado = $3::text
+           RETURNING ${RETURNING_COLS}`,
+          [ordemId, estado, estadoAnterior],
+        );
+
+        if (!rows[0]) {
+          await client.query('ROLLBACK');
+          return null;
+        }
+
+        if (checklist?.length > 0) {
+          await client.query(
+            'DELETE FROM diagnostico_checklist WHERE ordem_id = $1::bigint',
+            [ordemId],
+          );
+          for (const item of checklist) {
+            const nomeItem = String(item.item ?? '').trim();
+            if (!nomeItem) continue;
+
+            await client.query(
+              `INSERT INTO diagnostico_checklist (
+                 ordem_id, mecanico_id, item, estado, observacao, valor_medicao, foto_url
+               )
+               VALUES ($1::bigint, $2::bigint, $3::text, $4::text, $5::text, $6::text, $7::text)`,
+              [
+                ordemId,
+                mecanicoId,
+                nomeItem,
+                item.estado ?? 'OK',
+                item.observacao ?? null,
+                item.valorMedicao ?? item.valor_medicao ?? null,
+                item.fotoUrl ?? item.foto_url ?? null,
+              ],
+            );
+          }
+        }
+
+        for (const servico of servicos) {
+          await client.query(
+            `INSERT INTO servicos_os (
+               ordem_id, servico_id, descricao_snapshot, quantidade, preco_unitario,
+               subtotal, precificado, origem
+             )
+             VALUES ($1::bigint, $2::bigint, $3::text, $4::numeric, 0, 0, FALSE, $5::text)`,
+            [
+              ordemId,
+              servico.servicoId ?? null,
+              servico.descricaoSnapshot,
+              servico.quantidade,
+              servico.origem,
+            ],
+          );
+        }
+
+        for (const peca of pecas) {
+          await client.query(
+            `INSERT INTO pecas_os (
+               ordem_id, peca_id, descricao_snapshot, quantidade, preco_unitario,
+               subtotal, precificado, origem
+             )
+             VALUES ($1::bigint, $2::bigint, $3::text, $4::integer, 0, 0, FALSE, $5::text)`,
+            [
+              ordemId,
+              peca.pecaId ?? null,
+              peca.descricaoSnapshot ?? null,
+              peca.quantidade,
+              peca.origem,
+            ],
+          );
+        }
+
+        await client.query(
+          `INSERT INTO historico_estado (
+             ordem_id, estado_anterior, estado_novo, utilizador_id, motivo
+           )
+           VALUES ($1::bigint, $2::text, $3::text, $4::bigint, $5::text)`,
+          [
+            ordemId,
+            estadoAnterior,
+            estado,
+            utilizadorId ?? null,
+            motivo ?? null,
+          ],
+        );
+        await inserirMensagemEstado(client, {
+          ordemId,
+          numeroOS: rows[0].numero_os,
+          estadoAnterior,
+          estadoNovo: estado,
+        });
+        await client.query('COMMIT');
+
+        const osMap = map(rows[0]);
+        for (const plano of _planosNotificacao(estado, osMap)) {
+          await _notificarBestEffort(plano);
+        }
+        return osMap;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async listarChecklist(ordemId) {
+      const { rows } = await pool.query(
+        `SELECT
+           id,
+           ordem_id,
+           mecanico_id,
+           item,
+           estado,
+           observacao,
+           valor_medicao,
+           foto_url,
+           criado_at
+         FROM diagnostico_checklist
+         WHERE ordem_id = $1::bigint
+         ORDER BY id ASC`,
+        [ordemId],
+      );
+
+      return rows.map((r) => ({
+        id: r.id,
+        ordemId: r.ordem_id,
+        mecanicoId: r.mecanico_id,
+        item: r.item,
+        estado: r.estado,
+        observacao: r.observacao,
+        valorMedicao: r.valor_medicao,
+        fotoUrl: r.foto_url,
+        criadoAt: r.criado_at,
+      }));
     },
 
     async contarServicos(ordemId) {
@@ -575,19 +1308,36 @@ export function criarPgOsRepository() {
     // ============================================================
     // RF07 — Entrega
     // ============================================================
-    async definirEntrega({ ordemId, modalidade, taxaEntrega }) {
+    async definirEntrega({
+      ordemId,
+      estadoEsperado,
+      modalidade,
+      taxaEntrega,
+      enderecoEntrega,
+      entregaLat,
+      entregaLng,
+    }) {
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
 
-        await client.query(
+        const { rowCount } = await client.query(
           `UPDATE ordens_servico
            SET modalidade_entrega = $2::text,
                taxa_entrega = $3::numeric,
+               endereco_entrega = $5::text,
+               entrega_lat = $6::double precision,
+               entrega_lng = $7::double precision,
                updated_at = now()
-           WHERE id = $1::bigint`,
-          [ordemId, modalidade, taxaEntrega],
+           WHERE id = $1::bigint
+             AND estado = $4::text`,
+          [ordemId, modalidade, taxaEntrega, estadoEsperado, enderecoEntrega, entregaLat, entregaLng],
         );
+        if (rowCount === 0) {
+          await client.query('ROLLBACK');
+          return null;
+        }
 
         const { rows: total } = await client.query(SQL_RECOMPUTAR_TOTAL, [ordemId]);
         const { rows } = await client.query(`${SELECT_BASE} WHERE o.id = $1::bigint`, [ordemId]);
@@ -609,10 +1359,6 @@ export function criarPgOsRepository() {
     // ============================================================
     // Máquina de estados — transição
     // ============================================================
-
-    // Compatível com:
-    // 1) { id, estado, utilizadorId, motivo }
-    // 2) { ordemId, estadoAnterior, estadoNovo, utilizadorId, motivo }
     async transitar(params) {
       const ordemId = params.ordemId ?? params.id;
       const estadoNovo = params.estadoNovo ?? params.estado;
@@ -623,27 +1369,14 @@ export function criarPgOsRepository() {
       if (!ordemId || !estadoNovo) {
         throw erros.transicaoInvalida(estadoAnterior ?? null);
       }
+      if (!estadoAnterior) {
+        throw new Error('estadoAnterior obrigatório para transitar a OS.');
+      }
 
       const client = await pool.connect();
+
       try {
         await client.query('BEGIN');
-
-        if (!estadoAnterior) {
-          const { rows: atual } = await client.query(
-            `SELECT estado
-             FROM ordens_servico
-             WHERE id = $1::bigint
-             FOR UPDATE`,
-            [ordemId],
-          );
-
-          if (!atual[0]) {
-            await client.query('ROLLBACK');
-            return null;
-          }
-
-          estadoAnterior = atual[0].estado;
-        }
 
         const { rows } = await client.query(
           `UPDATE ordens_servico
@@ -666,19 +1399,34 @@ export function criarPgOsRepository() {
 
         await client.query(
           `INSERT INTO historico_estado (
-             ordem_id,
-             estado_anterior,
-             estado_novo,
-             utilizador_id,
-             motivo
+             ordem_id, estado_anterior, estado_novo, utilizador_id, motivo
            )
            VALUES ($1::bigint, $2::text, $3::text, $4::bigint, $5::text)`,
-          [ordemId, estadoAnterior, estadoNovo, utilizadorId ?? null, motivo ?? null],
+          [
+            ordemId,
+            estadoAnterior,
+            estadoNovo,
+            utilizadorId ?? null,
+            motivo ?? null,
+          ],
         );
+
+        await inserirMensagemEstado(client, {
+          ordemId,
+          numeroOS: rows[0].numero_os,
+          estadoAnterior,
+          estadoNovo,
+        });
 
         await client.query('COMMIT');
 
-        return map(rows[0]);
+        const osMap = map(rows[0]);
+
+        for (const plano of _planosNotificacao(estadoNovo, osMap)) {
+          await _notificarBestEffort(plano);
+        }
+
+        return osMap;
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         throw err;
@@ -687,11 +1435,14 @@ export function criarPgOsRepository() {
       }
     },
 
-    // Alias usado por vários use-cases F12.
-    async atualizarEstado({ ordemId, estado, utilizadorId, motivo }) {
+    async atualizarEstado({ ordemId, estadoAnterior, estado, utilizadorId, motivo }) {
+      if (!estadoAnterior) {
+        throw new Error('estadoAnterior obrigatório para atualizar o estado da OS.');
+      }
       return this.transitar({
-        id: ordemId,
-        estado,
+        ordemId,
+        estadoAnterior,
+        estadoNovo: estado,
         utilizadorId,
         motivo,
       });

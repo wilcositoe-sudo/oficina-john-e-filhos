@@ -1,4 +1,5 @@
 import { DomainError } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 
 const erroValidacao = (campo, msg) =>
   new DomainError('VALIDACAO', `Campo inválido: ${campo}. ${msg}`, 422, { campo });
@@ -10,7 +11,7 @@ export function criarSolicitarOrcamento({ orcamentoRepo, veiculoRepo }) {
     if (desc.length < 10) throw erroValidacao('descricaoProblema', 'Mínimo 10 caracteres.');
 
     const veiculo = veiculoId ? await veiculoRepo.procurarPorId(veiculoId) : null;
-    if (!veiculo || veiculo.utilizadorId !== utilizadorId) {
+    if (!veiculo || !mesmaId(veiculo.utilizadorId, utilizadorId)) {
       throw new DomainError('VEICULO_INVALIDO', 'Selecione um veículo seu para o orçamento.', 422, { campo: 'veiculoId' });
     }
 

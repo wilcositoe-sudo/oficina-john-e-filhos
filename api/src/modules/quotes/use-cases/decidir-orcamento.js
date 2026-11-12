@@ -1,4 +1,5 @@
 import { DomainError, erros } from '../../../shared/errors/domain-error.js';
+import { mesmaId } from '../../../shared/id.js';
 import { podeDecidir } from '../domain/estados.js';
 
 // RF02: cliente aceita ou rejeita a proposta. Só o dono, só se ENVIADO.
@@ -10,7 +11,7 @@ export function criarDecidirOrcamento({ orcamentoRepo }) {
 
     const orc = await orcamentoRepo.procurarPorId(id);
     if (!orc) throw erros.orcamentoNaoEncontrado();
-    if (orc.utilizadorId !== utilizador.id) throw erros.naoAutorizado();
+    if (!mesmaId(orc.utilizadorId, utilizador.id)) throw erros.naoAutorizado();
     if (!podeDecidir(orc.estado)) throw erros.transicaoInvalida(orc.estado);
 
     const novoEstado = decisao === 'APROVAR' ? 'APROVADO' : 'REJEITADO';

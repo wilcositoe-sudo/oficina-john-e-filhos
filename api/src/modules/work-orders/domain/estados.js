@@ -1,77 +1,136 @@
-// Máquina de estados da OS (Doc 03 §3.8 — atualizada para o fluxo Mecânico/Funcionário).
-// RN03: transições só por AÇÃO; o browser nunca envia estado livre.
-
 export const ESTADOS_OS = Object.freeze({
-  // Estados Clássicos
   PENDENTE: 'PENDENTE',
+  AGUARDANDO_DIAGNOSTICO: 'AGUARDANDO_DIAGNOSTICO',
   EM_DIAGNOSTICO: 'EM_DIAGNOSTICO',
-  AGUARDANDO_APROVACAO_ORCAMENTO: 'AGUARDANDO_APROVACAO_ORCAMENTO', // Legado/Compatibilidade
+  AGUARDANDO_PRECO_FUNCIONARIO: 'AGUARDANDO_PRECO_FUNCIONARIO',
+  AGUARDANDO_APROVACAO_CLIENTE: 'AGUARDANDO_APROVACAO_CLIENTE',
+  AGUARDANDO_VALIDACAO_FUNCIONARIO: 'AGUARDANDO_VALIDACAO_FUNCIONARIO',
+
+  // Fase 5
+  AGUARDANDO_ATRIBUICAO_REPARACAO: 'AGUARDANDO_ATRIBUICAO_REPARACAO',
+  AGUARDANDO_REPARACAO: 'AGUARDANDO_REPARACAO',
+
   EM_REPARACAO: 'EM_REPARACAO',
   AGUARDANDO_PECAS: 'AGUARDANDO_PECAS',
   CONCLUIDA: 'CONCLUIDA',
   PAGA: 'PAGA',
   ENTREGUE: 'ENTREGUE',
-  CANCELADA: 'CANCELADA',
-  
-  // Novos Estados do Fluxo de Diagnóstico e Aprovação
-  AGUARDANDO_PRECO_FUNCIONARIO: 'AGUARDANDO_PRECO_FUNCIONARIO',
-  AGUARDANDO_APROVACAO_CLIENTE: 'AGUARDANDO_APROVACAO_CLIENTE',
-  AGUARDANDO_VALIDACAO_FUNCIONARIO: 'AGUARDANDO_VALIDACAO_FUNCIONARIO',
   REJEITADA: 'REJEITADA',
+  CANCELADA: 'CANCELADA',
+
+  // Retrocompatibilidade com fluxos antigos
+  AGUARDANDO_APROVACAO_ORCAMENTO: 'AGUARDANDO_APROVACAO_ORCAMENTO',
 });
 
-// Mapa de transições válidas: [Estado Atual] -> [Estados Destino Possíveis]
-const TRANSICOES = {
-  PENDENTE: ['EM_DIAGNOSTICO', 'CANCELADA'],
-  EM_DIAGNOSTICO: ['AGUARDANDO_PRECO_FUNCIONARIO', 'EM_REPARACAO', 'CANCELADA'], // Mecânico termina diagnóstico
-  AGUARDANDO_PRECO_FUNCIONARIO: ['AGUARDANDO_APROVACAO_CLIENTE', 'CANCELADA'], // Funcionário precifica
-  AGUARDANDO_APROVACAO_CLIENTE: [
-    'EM_REPARACAO', // Cliente aprova tudo
-    'AGUARDANDO_VALIDACAO_FUNCIONARIO', // Cliente modifica (remove itens)
-    'REJEITADA', // Cliente rejeita (ativa cobrança de taxa)
-    'CANCELADA'
-  ],
-  AGUARDANDO_VALIDACAO_FUNCIONARIO: ['EM_REPARACAO', 'CANCELADA'], // Funcionário valida os cortes do cliente
-  AGUARDANDO_APROVACAO_ORCAMENTO: ['EM_REPARACAO', 'EM_DIAGNOSTICO', 'CANCELADA'], // Legado
-  EM_REPARACAO: ['AGUARDANDO_PECAS', 'CONCLUIDA', 'CANCELADA'],
-  AGUARDANDO_PECAS: ['EM_REPARACAO', 'CANCELADA'],
-  CONCLUIDA: ['PAGA'],
-  PAGA: ['ENTREGUE'],
-  ENTREGUE: [],
-  REJEITADA: [], // Estado terminal (só pode ser reaberto via ajuste administrativo)
-  CANCELADA: [],
-};
-
-// Ações de domínio -> estado destino
 export const ACOES_TRANSICAO = Object.freeze({
-  iniciar_diagnostico: 'EM_DIAGNOSTICO',
-  finalizar_diagnostico: 'AGUARDANDO_PRECO_FUNCIONARIO', // NOVO: Ação do Mecânico
-  precificar: 'AGUARDANDO_APROVACAO_CLIENTE', // NOVO: Ação do Funcionário
-  aprovar_cliente: 'EM_REPARACAO', // NOVO: Cliente aprova
-  solicitar_revisao: 'AGUARDANDO_VALIDACAO_FUNCIONARIO', // NOVO: Cliente modifica
-  validar_revisao: 'EM_REPARACAO', // NOVO: Funcionário aceita os cortes
-  rejeitar: 'REJEITADA', // NOVO: Cliente rejeita
-  aguardar_aprovacao: 'AGUARDANDO_APROVACAO_ORCAMENTO', // Legado
-  iniciar_reparacao: 'EM_REPARACAO',
-  aguardar_pecas: 'AGUARDANDO_PECAS',
-  concluir: 'CONCLUIDA',
-  cancelar: 'CANCELADA',
-  entregar: 'ENTREGUE',
+  atribuir_mecanico: ESTADOS_OS.AGUARDANDO_DIAGNOSTICO,
+  iniciar_diagnostico: ESTADOS_OS.EM_DIAGNOSTICO,
+  finalizar_diagnostico: ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO,
+
+  precificar: ESTADOS_OS.AGUARDANDO_APROVACAO_CLIENTE,
+
+  aprovar_cliente: ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO,
+  modificar_cliente: ESTADOS_OS.AGUARDANDO_VALIDACAO_FUNCIONARIO,
+  solicitar_revisao: ESTADOS_OS.AGUARDANDO_VALIDACAO_FUNCIONARIO,
+  rejeitar: ESTADOS_OS.REJEITADA,
+
+  validar_edicao_aprovada: ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO,
+  validar_edicao_rejeitada: ESTADOS_OS.AGUARDANDO_APROVACAO_CLIENTE,
+
+  atribuir_reparacao: ESTADOS_OS.AGUARDANDO_REPARACAO,
+  iniciar_reparacao: ESTADOS_OS.EM_REPARACAO,
+  aguardar_pecas: ESTADOS_OS.AGUARDANDO_PECAS,
+  nova_necessidade: ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO,
+
+  concluir: ESTADOS_OS.CONCLUIDA,
+  pagar: ESTADOS_OS.PAGA,
+  entregar: ESTADOS_OS.ENTREGUE,
+  cancelar: ESTADOS_OS.CANCELADA,
 });
 
-// Estados em que ainda é possível lançar linhas (serviços/peças)
-const EDITAVEIS = [
-  'PENDENTE',
-  'EM_DIAGNOSTICO',
-  'AGUARDANDO_PRECO_FUNCIONARIO',
-  'AGUARDANDO_APROVACAO_CLIENTE',
-  'AGUARDANDO_VALIDACAO_FUNCIONARIO',
-  'EM_REPARACAO',
-  'AGUARDANDO_PECAS',
-];
+const TRANSICOES = Object.freeze({
+  [ESTADOS_OS.PENDENTE]: [
+    ESTADOS_OS.AGUARDANDO_DIAGNOSTICO,   // ★ Fase 5: funcionário atribui mecânico p/ diagnóstico
+    ESTADOS_OS.EM_DIAGNOSTICO,           // ★ RETRO: atalho antigo (smoke-f10 / API directa staff)
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_DIAGNOSTICO]: [
+    ESTADOS_OS.EM_DIAGNOSTICO,
+    ESTADOS_OS.AGUARDANDO_DIAGNOSTICO,   // permite reatribuir antes de iniciar
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.EM_DIAGNOSTICO]: [
+    ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO,  // ★ Fase 5: mecânico finaliza diagnóstico
+    ESTADOS_OS.EM_REPARACAO,                  // ★ RETRO: atalho antigo (smoke-f10 / fluxo pré-mecânico)
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO]: [
+    ESTADOS_OS.AGUARDANDO_APROVACAO_CLIENTE,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_APROVACAO_CLIENTE]: [
+    ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO,
+    ESTADOS_OS.AGUARDANDO_VALIDACAO_FUNCIONARIO,
+    ESTADOS_OS.REJEITADA,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_VALIDACAO_FUNCIONARIO]: [
+    ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO,
+    ESTADOS_OS.AGUARDANDO_APROVACAO_CLIENTE,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO]: [
+    ESTADOS_OS.AGUARDANDO_REPARACAO,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_REPARACAO]: [
+    ESTADOS_OS.EM_REPARACAO,
+    ESTADOS_OS.AGUARDANDO_PECAS,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.EM_REPARACAO]: [
+    ESTADOS_OS.AGUARDANDO_PECAS,
+    ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO,  // ★ Fase 5: nova necessidade durante reparação
+    ESTADOS_OS.CONCLUIDA,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.AGUARDANDO_PECAS]: [
+    ESTADOS_OS.EM_REPARACAO,
+    ESTADOS_OS.AGUARDANDO_PRECO_FUNCIONARIO,
+    ESTADOS_OS.CANCELADA,
+  ],
+
+  [ESTADOS_OS.CONCLUIDA]: [
+    ESTADOS_OS.PAGA,
+  ],
+
+  [ESTADOS_OS.PAGA]: [
+    ESTADOS_OS.ENTREGUE,
+  ],
+
+  [ESTADOS_OS.ENTREGUE]: [],
+  [ESTADOS_OS.REJEITADA]: [],
+  [ESTADOS_OS.CANCELADA]: [],
+
+  // ★ RETRO: fluxo antigo de orçamento solto (pré-Fase 4)
+  [ESTADOS_OS.AGUARDANDO_APROVACAO_ORCAMENTO]: [
+    ESTADOS_OS.AGUARDANDO_ATRIBUICAO_REPARACAO,
+    ESTADOS_OS.EM_REPARACAO,
+    ESTADOS_OS.CANCELADA,
+  ],
+});
 
 export function podeTransitar(de, para) {
-  return (TRANSICOES[de] ?? []).includes(para);
+  return TRANSICOES[de]?.includes(para) ?? false;
 }
 
 export function destinosPossiveis(de) {
@@ -79,5 +138,11 @@ export function destinosPossiveis(de) {
 }
 
 export function podeEditar(estado) {
-  return EDITAVEIS.includes(estado);
+  return [
+    ESTADOS_OS.PENDENTE,
+    ESTADOS_OS.EM_DIAGNOSTICO,
+    ESTADOS_OS.AGUARDANDO_REPARACAO,
+    ESTADOS_OS.EM_REPARACAO,
+    ESTADOS_OS.AGUARDANDO_PECAS,
+  ].includes(estado);
 }
