@@ -169,6 +169,12 @@ npm run lint --workspace=apps/web
 
 - O adapter de pagamentos atual é **simulado**; falta integração com um fornecedor real, incluindo credenciais, callbacks assinados e validação operacional.
 - As fotografias de perfil são gravadas no diretório `UPLOAD_ROOT` (por omissão, `api/uploads`). Em produção, esse caminho precisa de armazenamento persistente partilhado entre instâncias da API.
+
+## Deploy no Railway
+
+O monorepo é publicado como dois serviços Railway, `api` e `web`, a partir do diretório raiz. A API executa as migrações como comando pré-deploy; o frontend é compilado com `VITE_API_URL` e servido pelo servidor estático incluído em `apps/web/server.js`.
+
+Configura `DATABASE_URL` como variável secreta do serviço `api`, `WEB_ORIGIN` com o domínio público de `web` e `VITE_API_URL` com o domínio público de `api` seguido de `/api/v1`. Não coloques valores de `.env` no Git nem no chat. O ficheiro `.railwayignore` exclui uploads locais do envio: fotografias e evidências carregadas em produção exigem um volume persistente montado em `/app/api/uploads` e `UPLOAD_ROOT=/app/api/uploads`.
 - Serviços e peças podem ser removidos definitivamente pela gestão do catálogo. Se já estiverem associados a orçamentos ou OS, as linhas históricas e os valores guardados permanecem; apenas a referência ao item do catálogo fica vazia.
 - O chat apresenta numa caixa de entrada as conversas do assistente e das OS, com contadores de não lidas. Mensagens de progresso da OS são guardadas como mensagens de sistema; ocultar uma conversa remove-a apenas da lista do utilizador atual, sem apagar o histórico do outro participante.
 - Conversas explicitamente marcadas como **sem diagnóstico** expiram 24 horas depois da última mensagem. Conversas com diagnóstico e conversas associadas a OS ficam guardadas até cada participante as remover da sua própria lista.
