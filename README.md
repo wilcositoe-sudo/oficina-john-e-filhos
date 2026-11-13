@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Oficina John e Filhos
 
 Sistema web para organizar o atendimento e a operação de uma oficina mecânica: desde o registo do cliente e do veículo até ao diagnóstico, orçamento, reparação, pagamento, entrega e avaliação do serviço.
@@ -79,7 +80,7 @@ Os nomes abaixo descrevem o que o código realmente faz; nem toda a técnica cor
 | Padrão/técnica | Onde e como é usado | Vantagem e limite |
 |---|---|---|
 | **Factory functions** | Funções como `criarLogin`, `criarCriarOS` e `createPaymentsDependencies` constroem casos de uso e dependências com os adapters recebidos. As composições dos módulos são reunidas no [composition-root.js](./api/src/composition-root.js). | Centraliza a construção e facilita injetar doubles nos testes. São factories simples; não existe uma hierarquia de Abstract Factory. |
-| **Builder** | **Não está implementado como padrão no projeto.** As funções de composição recebem dependências e devolvem objetos prontos, sem uma API fluente de etapas (`builder.set...().build()`). | Evita introduzir complexidade onde a construção atual é direta. Se a configuração dos módulos crescer muito, um Builder pode ser avaliado, mas não é necessário hoje. |
+
 
 ### Estruturais
 
@@ -185,3 +186,6 @@ Configura `DATABASE_URL` como variável secreta do serviço `api`, `WEB_ORIGIN` 
 - A cena 3D de autenticação é carregada sob demanda, mas o respetivo bundle ainda é grande e pode ser otimizado.
 
 Estas limitações ajudam a distinguir o que já existe no código do que ainda precisa de integração ou validação antes de uma utilização operacional em produção.
+=======
+# oficina-john-e-filhos
+>>>>>>> 64686d60e0cb34f44862036971d5b63dfd5f5d74
